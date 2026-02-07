@@ -129,6 +129,7 @@ export class GraphService {
 
     let nodes: GraphNode[] = [];
     let edges: GraphEdge[] = [];
+    let hasExistingGraph = false;
 
     const existing = (await kv.get(keys.graph)) as string | null;
     if (existing) {
@@ -136,6 +137,7 @@ export class GraphService {
         const parsed = JSON.parse(existing) as DependencyGraph;
         nodes = parsed.nodes;
         edges = parsed.edges;
+        hasExistingGraph = true;
       } catch {
         nodes = [];
         edges = [];
@@ -152,8 +154,21 @@ export class GraphService {
       }
     }
 
+    // If graph payload is missing/corrupt but file SHAs still exist, incremental mode can end up empty forever.
+    // In that case, force a full rebuild from the current tree.
+    const incrementalFiles = [...newFiles, ...changedFiles];
+    const needsFullRebuild =
+      !hasExistingGraph ||
+      (files.length > 0 && nodes.length === 0 && incrementalFiles.length === 0);
+
+    if (needsFullRebuild) {
+      console.log('[Graph] Full rebuild triggered');
+      nodes = [];
+      edges = [];
+    }
+
     const resolver = new ImportResolver(allFilePaths);
-    const filesToProcess = [...newFiles, ...changedFiles];
+    const filesToProcess = needsFullRebuild ? files : incrementalFiles;
     let processedCount = 0;
     const edgeSet = new Set(edges.map((edge) => `${edge.source}=>${edge.target}`));
 
