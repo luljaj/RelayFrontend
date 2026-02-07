@@ -26,7 +26,7 @@ These commands are returned by MCP tools (`check_status`, `post_status`) to guid
 | **PUSH** | Lock release requires sync. | `git push` | `post_status(OPEN)` but `head` unchanged |
 | **WAIT** | Symbol is locked by another user. | `sleep 5` | `locks[symbol] != null` |
 | **SWITCH_TASK** | Node or neighbor locked. | `null` | `lock_type == "DIRECT" \| "NEIGHBOR"` |
-| **STOP** | Hard conflict or error. | `null` | Heartbeat failed, Vercel down |
+| **STOP** | Hard conflict or error. | `null` | Lock timeout, Vercel down |
 | **PROCEED**| Safe to continue. | `null` | No conflicts, fresh repo |
 
 ---
@@ -45,10 +45,12 @@ All requests MUST include:
 {
   "repo_url": "https://github.com/dedalus/core.git",
   "branch": "main",
-  "symbols": ["auth.ts", "auth.ts::validateToken"],
+  "file_paths": ["src/auth.ts", "src/db.ts"],
   "agent_head": "abc1234..." 
 }
 ```
+
+**Note:** `file_paths` are file-level only (e.g., "src/auth.ts"), not function/symbol level.
 
 **Response:**
 ```json
@@ -56,10 +58,12 @@ All requests MUST include:
   "status": "OK" | "STALE" | "CONFLICT" | "OFFLINE",
   "repo_head": "abc1234...",
   "locks": {
-    "auth.ts": {
+    "src/auth.ts": {
       "user": "github_user_1",
+      "user_name": "GitHub User",
       "status": "WRITING",
-      "lock_type": "DIRECT" | "NEIGHBOR", // New Field
+      "lock_type": "DIRECT" | "NEIGHBOR",
+      "message": "Refactoring authentication",
       "timestamp": 1234567890
     }
   },
@@ -69,12 +73,14 @@ All requests MUST include:
   ],
   "orchestration": {
     "type": "orchestration_command",
-    "action": "SWITCH_TASK", // Changed from WAIT
+    "action": "SWITCH_TASK",
     "command": null,
-    "reason": "Symbol 'auth.ts' is locked by user 'octocat' (DIRECT)"
+    "reason": "File 'src/auth.ts' is locked by user 'octocat' (DIRECT)"
   }
 }
 ```
+
+**Note:** File-level granularity. Keys in `locks` are file paths.
 
 ### `post_status`
 
@@ -83,7 +89,7 @@ All requests MUST include:
 {
   "repo_url": "https://github.com/dedalus/core.git",
   "branch": "main",
-  "symbols": ["auth.ts::validateToken", "auth.ts::login"], 
+  "file_paths": ["src/auth.ts", "src/utils.ts"], 
   "status": "READING" | "WRITING" | "OPEN",
   "message": "Refactoring auth logic",
   "agent_head": "abc1234...",
@@ -91,11 +97,13 @@ All requests MUST include:
 }
 ```
 
+**Note:** `file_paths` are file-level only. Multi-file locking is atomic (all-or-nothing).
+
 **Response:**
 ```json
 {
   "success": true,
-  "orphaned_dependencies": ["utils.ts"], 
+  "orphaned_dependencies": ["src/utils.ts"], 
   "orchestration": {
     "type": "orchestration_command",
     "action": "PROCEED",
@@ -104,6 +112,8 @@ All requests MUST include:
 }
 ```
 
+**Note:** `orphaned_dependencies` lists file paths that depend on the files you just released.
+
 ---
 
 ## 3. Data Structures (Vercel Backend)
@@ -111,12 +121,20 @@ All requests MUST include:
 ### Lock Entry
 ```json
 {
-  "key": "repo_url:branch:symbol", // Composite Key
-  "symbol": "string",
-  "user_id": "string", 
+  "key": "repo_url:branch:file_path", // Composite Key
+  "file_path": "string",
+  "user_id": "string",
+  "user_name": "string",
   "status": "READING" | "WRITING",
   "agent_head": "string",
+  "message": "string",
   "timestamp": 1610000000,
-  "expiry": 1610000120 // timestamp + 120s (Passive Timeout)
+  "expiry": 1610000300 // timestamp + 300s (Passive Timeout - 5 minutes)
 }
 ```
+
+**Notes:**
+- **Granularity**: File-level only. `file_path` represents the file being worked on (e.g., "src/auth.ts")
+- **No Heartbeat**: Lock expiration is passive. If timestamp + 300s < now, lock is expired
+- **user_name**: Display name for UI purposes
+- **message**: Optional context message about what the user is doing

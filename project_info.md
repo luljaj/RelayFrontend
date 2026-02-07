@@ -53,7 +53,7 @@
 │  │  3. Graph UI:                                                        │ │
 │  │     • Interactive visualization of code graph                        │ │
 │  │     • Real-time status indicators (🔴 WRITING, 🔵 READING)           │ │
-│  │     • Folder-level and symbol-level views                            │ │
+│  │     • Folder-level and file-level views                              │ │
 │  │                                                                       │ │
 │  │  4. Chat:                                                            │ │
 │  │     • Agent-to-agent and human-to-agent communication                │ │
@@ -104,9 +104,6 @@
 │  │                                                                       │ │
 │  │  POST /api/post_activity                                             │ │
 │  │    → Adds to activity_feed, broadcasts to WebSocket clients          │ │
-│  │                                                                       │ │
-│  │  POST /api/heartbeat                                                 │ │
-│  │    → Updates last_heartbeat timestamp, prevents lock expiration      │ │
 │  │                                                                       │ │
 │  │  POST /api/chat                                                      │ │
 │  │    → Posts chat message, broadcasts to all clients                   │ │
@@ -238,7 +235,7 @@
 │  │  │     status: "WRITING",                                      │    │ │
 │  │  │     message: "Refactoring to JWT",                          │    │ │
 │  │  │     timestamp: 1234567890.123,                              │    │ │
-│  │  │     last_heartbeat: 1234567920.456                          │    │ │
+│  │  │     expiry: 1234568190.123    // timestamp + 300s           │    │ │
 │  │  │   },                                                         │    │ │
 │  │  │   "auth.ts::login": {                                       │    │ │
 │  │  │     symbol: "auth.ts::login",                               │    │ │
@@ -364,12 +361,13 @@
 │  │                   Background Tasks (Webapp - Async)                   │ │
 │  │                                                                       │ │
 │  │  cleanup_stale_locks():                                              │ │
-│  │  ├─ Runs every 10 seconds (Vercel cron or background job)            │ │
+│  │  ├─ Runs every 60 seconds (Vercel cron job)                          │ │
 │  │  ├─ Checks timestamp for each lock in lock_table                     │ │
-│  │  ├─ If > 120 seconds old → Expire lock                               │ │
+│  │  ├─ If > 300 seconds old → Expire lock (5 min timeout)               │ │
 │  │  ├─ Broadcast "lock_expired" event via WebSocket                     │ │
 │  │  ├─ Log to status_log                                                │ │
 │  │  └─ Update lock_table (set to OPEN)                                  │ │
+│  │  └─ NO HEARTBEAT: Passive timeout only                               │ │
 │  │                                                                       │ │
 │  │  Graph-Based Locking Logic (Enforced by Vercel):                     │ │
 │  │  When an agent requests to WRITE 'Node A':                           │ │
@@ -404,7 +402,7 @@
 │  │    tool: "check_interference",                                       │ │
 │  │    params: { symbols: [...] },                                       │ │
 │  │    credentials: {                                                    │ │
-│  │      "COORD_API_KEY": "aG4kL9mPxY2zQ=="  ← Encrypted blob           │ │
+│  │      "GITHUB_TOKEN": "aG4kL9mPxY2zQ=="  ← Encrypted blob            │ │
 │  │    }                                                                 │ │
 │  │  }                                                                    │ │
 │  │                                                                       │ │
@@ -449,8 +447,8 @@
 │  │                                     │  │                             │ │
 │  │  Environment:                       │  │  Environment:               │ │
 │  │  .env:                              │  │  .env:                      │ │
-│  │    COORD_API_KEY=                   │  │    COORD_API_KEY=           │ │
-│  │      coord_sk_luka_abc123           │  │      coord_sk_jane_xyz789   │ │
+│  │    GITHUB_TOKEN=                    │  │    GITHUB_TOKEN=            │ │
+│  │      ghp_luka_abc123...             │  │      ghp_jane_xyz789...     │ │
 │  │    DEDALUS_API_KEY=<shared>         │  │    DEDALUS_API_KEY=<shared> │ │
 │  │                                     │  │                             │ │
 │  │  ┌────────────────────────────────┐ │  │ ┌─────────────────────────┐ │ │
@@ -462,14 +460,14 @@
 │  │  │  coord = Connection(          │ │  │ │                         │ │ │
 │  │  │    name="coord-server",       │ │  │ │                         │ │ │
 │  │  │    secrets=SecretKeys(        │ │  │ │                         │ │ │
-│  │  │      key="COORD_API_KEY"      │ │  │ │                         │ │ │
+│  │  │      key="GITHUB_TOKEN"       │ │  │ │                         │ │ │
 │  │  │    )                           │ │  │ │                         │ │ │
 │  │  │  )                             │ │  │ │                         │ │ │
 │  │  │                                │ │  │ │                         │ │ │
 │  │  │  coord_secrets = SecretValues(│ │  │ │                         │ │ │
 │  │  │    coord,                     │ │  │ │                         │ │ │
 │  │  │    key=os.getenv(             │ │  │ │                         │ │ │
-│  │  │      "COORD_API_KEY"          │ │  │ │                         │ │ │
+│  │  │      "GITHUB_TOKEN"           │ │  │ │                         │ │ │
 │  │  │    )                           │ │  │ │                         │ │ │
 │  │  │  )                             │ │  │ │                         │ │ │
 │  │  │                                │ │  │ │                         │ │ │
@@ -545,7 +543,7 @@ PHASE 1: Client-Side Setup (Luka's Machine)
 │ This tells Dedalus:                 │
 │ "When connecting to coord-server,   │
 │  look for credential named           │
-│  COORD_API_KEY"                     │
+│  GITHUB_TOKEN"                      │
 └──────────────────┬───────────────────┘
                    │
                    ▼
@@ -645,8 +643,8 @@ PHASE 3: Dedalus Infrastructure
 │    context = {                       │
 │        request_context: {            │
 │            credentials: {            │
-│                "COORD_API_KEY":      │
-│                  "coord_sk_luka_abc" │
+│                "GITHUB_TOKEN":       │
+│                  "ghp_luka_abc123..."│
 │            }                         │
 │        }                             │
 │    }                                 │
@@ -881,7 +879,7 @@ TIME: T=2 (Luka posts reading status)
 │      status: "READING",  🔵                                │
 │      message: "Analyzing auth flow",                       │
 │      timestamp: 1000,                                      │
-│      last_heartbeat: 1000                                  │
+│      expiry: 1300         // timestamp + 300s (5 min)      │
 │    }                                                        │
 │  }                                                          │
 │                                                             │
@@ -936,8 +934,8 @@ TIME: T=3 (Luka transitions to WRITING)
 │      user_email: "luka@example.com",                       │
 │      status: "WRITING",  🔴 ← Changed!                     │
 │      message: "Implementing JWT validation",               │
-│      timestamp: 1000,                                      │
-│      last_heartbeat: 1030                                  │
+│      timestamp: 1030,    // Updated on status change       │
+│      expiry: 1330        // timestamp + 300s               │
 │    }                                                        │
 │  }                                                          │
 └─────────────────────────────────────────────────────────────┘
@@ -1333,8 +1331,8 @@ When `POST /api/graph/generate` is called:
 
 1. **Graph Visualization**:
    - Interactive D3.js/Cytoscape graph
-   - Shows symbols with real-time status (🔴 WRITING, 🔵 READING)
-   - Folder-level and symbol-level views
+   - Shows files with real-time status (🔴 WRITING, 🔵 READING)
+   - Folder-level and file-level views (file-level granularity)
    - Connects to MCP WebSocket for live updates
 
 2. **Status Log**:
@@ -1468,11 +1466,6 @@ BACKEND (API Routes)
   Input: { user_id, summary, scope, intent }
   Side-effects: Appends to activity_feed, broadcasts
 
-/app/api/heartbeat/route.ts
-  POST /api/heartbeat
-  Input: { user_id, symbols }
-  Side-effects: Updates last_heartbeat timestamps
-
 /app/api/chat/route.ts
   POST /api/chat
   Input: { user_id, message, context }
@@ -1538,9 +1531,10 @@ Vercel Cron Jobs (vercel.json):
 
 /app/api/cleanup_stale_locks/route.ts:
   - Query lock_table
-  - Find locks where last_heartbeat > 60s ago
+  - Find locks where timestamp > 300s ago (5 minute passive timeout)
   - Set status to OPEN
   - Broadcast "lock_expired" event
+  - NO HEARTBEAT mechanism
   - Log to status_log
 
 GRAPH CREATOR
@@ -2007,26 +2001,7 @@ WHEN NOT TO POST:
 
 ---
 
-### **Tool 4: heartbeat**
-
-**Description:**
-```
-Keep your locks alive (60s timeout).
-
-USAGE:
-  - Call every 30-45 seconds while WRITING
-  - Prevents lock expiration
-  - No-op if you don't hold any locks
-
-PARAMETERS:
-  - symbols: List of symbols you're keeping alive
-
-AUTO-EXPIRATION:
-  If you don't heartbeat for >60s:
-  - Lock is released automatically
-  - Status set to OPEN
-  - Event broadcast: "lock_expired"
-```
+**Note:** Lock expiration is passive (300 seconds / 5 minutes). No heartbeat mechanism. To extend a lock, simply re-issue `post_status` with the same status.
 
 ---
 
@@ -2079,7 +2054,7 @@ Recent Agent Activity:
 ## UI Responsibilities (Clarified)
 
 ### **UI Displays:**
-- Current locks/statuses (symbol-level and folder-level)
+- Current locks/statuses (file-level and folder-level)
 - Current `repo_head`
 - Activity feed messages
 - "Client is stale" indicator (if `your_head != repo_head`)
@@ -2286,9 +2261,10 @@ folder_activity = {
 ### 6. **Complete MCP Tools List**
 
 **Coordination Tools:**
-- `check_interference(symbols)` → Returns conflicts + dependency warnings
-- `post_status(symbol, status, message)` → OPEN/READING/WRITING
-- `heartbeat(symbols)` → Keep locks alive (60s timeout)
+- `check_status(file_paths)` → Returns conflicts + dependency warnings (file-level)
+- `post_status(file_paths, status, message)` → OPEN/READING/WRITING (file-level)
+
+**Note:** Lock timeout is 300s (5 min) with NO heartbeat. Re-issue `post_status` to extend.
 
 **Activity Feed Tools:**
 - `post_activity(message, layer, task_type)` → Post to activity feed
@@ -2303,9 +2279,9 @@ folder_activity = {
 ### 7. **WebSocket Events**
 
 **Broadcast Events:**
-- `status_update` → Symbol status changed (OPEN/READING/WRITING)
+- `status_update` → File status changed (OPEN/READING/WRITING)
 - `activity_posted` → New activity feed message
-- `lock_expired` → Lock timed out (no heartbeat for 60s)
+- `lock_expired` → Lock timed out (300s / 5 min passive timeout, no heartbeat)
 - `conflict_warning` → Direct conflict detected
 - `dependency_warning` → Dependency being WRITTEN
 
@@ -2321,7 +2297,7 @@ folder_activity = {
     user_name: "Luka",
     message: "Implementing JWT",
     timestamp: 1234567890.0,
-    last_heartbeat: 1234567920.0
+    expiry: 1234568190.0  // timestamp + 300s (5 min)
   },
   "auth.ts::login": {
     status: "OPEN",  # Available

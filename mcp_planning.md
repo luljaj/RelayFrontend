@@ -97,14 +97,16 @@ class PostStatusResponse(BaseModel):
 
 ### Endpoints
 1.  **POST `/api/check_status`**:
-    *   **Input**: `{ "symbols": [...], "agent_head": "...", "repo_url": "...", "branch": "..." }`
+    *   **Input**: `{ "file_paths": [...], "agent_head": "...", "repo_url": "...", "branch": "..." }`
     *   **Output**: `CheckStatusResponse` JSON.
+    *   **Note**: `file_paths` are file-level (e.g., "src/auth.ts"), not function-level
 2.  **POST `/api/post_status`**:
-    *   **Input**: `{ "symbols": [...], "status": "WRITING", "agent_head": "...", "repo_url": "...", "branch": "..." }`
+    *   **Input**: `{ "file_paths": [...], "status": "WRITING", "agent_head": "...", "repo_url": "...", "branch": "..." }`
     *   **Output**: `PostStatusResponse` JSON.
     *   **Response Codes**: 
         *   `200`: Success (PROCEED).
         *   `409`: Conflict (WAIT).
+    *   **Note**: Lock timeout is 300 seconds (5 minutes) with no heartbeat mechanism
 3.  **POST `/api/post_activity`**:
     *   **Input**: `{ "message": "...", "scope": "...", "intent": "..." }`
 
@@ -115,7 +117,17 @@ class PostStatusResponse(BaseModel):
 ### `check_status`
 ```python
 @mcp.tool()
-async def check_status(symbols: List[str], agent_head: str, repo_url: str, branch: str = "main") -> CheckStatusResponse:
+async def check_status(file_paths: List[str], agent_head: str, repo_url: str, branch: str = "main") -> CheckStatusResponse:
+    """Check status of files before editing. Returns orchestration commands.
+    
+    Args:
+        file_paths: List of file paths (e.g., ["src/auth.ts", "src/db.ts"])
+        agent_head: Current git HEAD SHA
+        repo_url: Repository URL
+        branch: Git branch name
+        
+    Note: Uses file-level granularity only. Lock timeout is 300s (5 min) with no heartbeat.
+    """
     user = await get_current_user()
     
     try:
@@ -124,7 +136,7 @@ async def check_status(symbols: List[str], agent_head: str, repo_url: str, branc
                 f"{VERCEL_URL}/api/check_status",
                 headers={"x-github-username": user.login},
                 json={
-                    "symbols": symbols, 
+                    "file_paths": file_paths, 
                     "agent_head": agent_head,
                     "repo_url": repo_url,
                     "branch": branch
@@ -148,17 +160,39 @@ async def check_status(symbols: List[str], agent_head: str, repo_url: str, branc
 ### `post_status`
 ```python
 @mcp.tool()
-async def post_status(symbols: List[str], status: str, agent_head: str, repo_url: str, branch: str = "main") -> PostStatusResponse:
+async def post_status(file_paths: List[str], status: str, message: str, agent_head: str, repo_url: str, branch: str = "main", new_repo_head: Optional[str] = None) -> PostStatusResponse:
+    """Update lock status for files. Supports atomic multi-file locking.
+    
+    Args:
+        file_paths: List of file paths (e.g., ["src/auth.ts"])
+        status: "READING", "WRITING", or "OPEN"
+        message: Context message about what you're doing
+        agent_head: Current git HEAD SHA (required for WRITING)
+        new_repo_head: New HEAD SHA after push (required for OPEN)
+        repo_url: Repository URL
+        branch: Git branch name
+        
+    Note: Lock expires after 300s (5 min) with no heartbeat. Re-issue post_status to extend.
+    """
     user = await get_current_user()
     
-    # 1. Validate 'WRITING' constraints locally if possible? 
-    # No, rely on Vercel for definitive check.
+    # Rely on Vercel for definitive conflict check
     
     try:
         async with httpx.AsyncClient() as client:
             resp = await client.post(
                 f"{VERCEL_URL}/api/post_status",
-                ... # json payload
+                headers={"x-github-username": user.login},
+                json={
+                    "file_paths": file_paths,
+                    "status": status,
+                    "message": message,
+                    "agent_head": agent_head,
+                    "new_repo_head": new_repo_head,
+                    "repo_url": repo_url,
+                    "branch": branch
+                },
+                timeout=5.0
             )
             
             if resp.status_code == 409:

@@ -22,16 +22,17 @@
 - **Purpose:** Real-time freshness checking
 
 ### 4. **Lock Expiration**
-- **Timeout:** 10 minutes of no status update (NOT heartbeat-based)
+- **Timeout:** 300 seconds (5 minutes) of no status update (NOT heartbeat-based)
 - **Cleanup:** Vercel cron job runs every 1 minute
 - **Behavior:** When lock expires, status → OPEN
 - **Agent Workflow:** Agent commits their own work when complete (lock expiration doesn't force anything)
-- **NO Heartbeat Mechanism:** Not implemented
+- **NO Heartbeat Mechanism:** Not implemented (passive timeout only)
 
 ### 5. **Graph Generation**
 - **Supported Languages:** JavaScript/TypeScript, Python only
-- **Granularity:** FILE-level dependencies (NOT function-level)
+- **Granularity:** FILE-level dependencies only (NOT function-level, NOT line-level)
 - **Analysis Method:** Import/require statement parsing (NO AST parsing)
+- **Lock Granularity:** File-level only. Locks apply to entire files, not functions or lines
 - **Update Strategy:** Incremental "Diff & Sync"
   - **Layer 1 (Repo Check):** Compare `repo_head` SHA. If unchanged, exit.
   - **Layer 2 (File Check):** Compare GitHub Tree SHAs against Redis Hash (`coord:file_shas`).
@@ -56,9 +57,9 @@
 - **Visualization:** Overlays lock status on file graph (shows which files agents are working on)
 
 ### 6. **Conflict Detection**
-- **Granularity:** LINE-LEVEL only
-- **Logic:** Two agents can work on same file if modifying different lines
-- **Complete Rules:** See `mcp_planning.md` for full lock logic
+- **Granularity:** FILE-LEVEL only
+- **Logic:** Only one agent can write to a file at a time (file-level locking)
+- **Complete Rules:** See `mcp_planning.md` and `schema.md` for full lock logic
 
 ### 7. **Lock Management**
 - **Updates:** ONLY current lock holder can update their own lock
@@ -83,9 +84,11 @@
 ```json
 {
   "user_id": "luka",
-  "symbols": ["src/auth.ts"]
+  "file_paths": ["src/auth.ts", "src/db.ts"]
 }
 ```
+
+**Note:** File-level granularity only. `file_paths` are full file paths, not functions/symbols.
 
 **Response:**
 ```json
@@ -113,19 +116,21 @@
 ---
 
 #### `POST /api/post_status`
-**Purpose:** Acquire/update/release lock on a file
+**Purpose:** Acquire/update/release lock on files
 
 **Request:**
 ```json
 {
   "user_id": "luka",
-  "symbol": "src/auth.ts",
+  "file_paths": ["src/auth.ts"],
   "status": "WRITING",  // or "OPEN", "READING"
+  "message": "Refactoring authentication",
   "agent_head": "abc123def",  // Required for WRITING
-  "new_repo_head": "xyz789",  // Required for OPEN (after push)
-  "lines": [10, 15, 20]  // Lines being modified (for line-level conflict detection)
+  "new_repo_head": "xyz789"  // Required for OPEN (after push)
 }
 ```
+
+**Note:** File-level locking only. Multi-file locking is atomic (all-or-nothing).
 
 **Response (Success):**
 ```json
@@ -146,21 +151,21 @@
 }
 ```
 
-**Response (Rejection - Line Conflict):**
+**Response (Rejection - File Conflict):**
 ```json
 {
   "status": "REJECTED",
-  "reason": "LINE_CONFLICT",
-  "message": "Lines 10-12 are being modified by another user.",
+  "reason": "FILE_CONFLICT",
+  "message": "File is being modified by another user.",
   "conflicting_user": "jane@example.com",
-  "conflicting_lines": [10, 11, 12]
+  "conflicting_file": "src/auth.ts"
 }
 ```
 
 **Process:**
 1. Fetch repo_head from GitHub API
 2. If WRITING: Validate agent_head == repo_head
-3. Check line-level conflicts in `coord:locks`
+3. Check file-level conflicts in `coord:locks`
 4. If OPEN: Verify new_repo_head advanced (optional)
 5. Update `coord:locks` in KV
 6. Broadcast WebSocket event
@@ -168,7 +173,8 @@
 
 **Lock Update Rule:**
 - ONLY the current lock holder (matching user_id) can update their own lock
-- Other users get REJECTED if they try to modify a locked symbol
+- Other users get REJECTED if they try to modify a locked file
+- Lock expires after 300 seconds (5 minutes) with no heartbeat mechanism
 
 ---
 
@@ -252,20 +258,21 @@
 ### **Background Jobs**
 
 #### `GET /api/cleanup_stale_locks`
-**Purpose:** Expire locks with no status update for 10+ minutes
+**Purpose:** Expire locks with no status update for 300+ seconds (5 minutes)
 
 **Trigger:** Vercel cron job, runs every 1 minute
 
 **Process:**
 1. Read all locks from `coord:locks`
 2. Check each lock's timestamp
-3. If `now - timestamp > 10 minutes`:
+3. If `now - timestamp > 300 seconds`:
    - Set status to OPEN
    - Delete from `coord:locks`
    - Broadcast `lock_expired` event
    - Log to `coord:status_log`
 
 **Note:** Agent commits own work when complete. Lock expiration just releases coordination, doesn't force git operations.
+**No Heartbeat:** Lock expiration is passive, based only on timestamp of last status update.
 
 ---
 
@@ -286,15 +293,18 @@
 ### Lock Entry Structure:
 ```json
 {
+  "file_path": "src/auth.ts",
   "user_id": "luka",
   "user_name": "Luka",
   "status": "WRITING",
   "agent_head": "abc123def",
   "timestamp": 1707321600000,
-  "message": "Refactoring auth",
-  "lines": [10, 11, 12]  // For line-level conflict detection
+  "expiry": 1707321900000,
+  "message": "Refactoring auth"
 }
 ```
+
+**Note:** File-level granularity only. Expiry is timestamp + 300 seconds (5 minutes).
 
 ---
 
@@ -340,7 +350,7 @@ Response: { "content": "<base64>", ... }
 
 1. **status_update** - Lock status changed
 2. **activity_posted** - New activity message
-3. **lock_expired** - Lock timed out (10min)
+3. **lock_expired** - Lock timed out (300s / 5 minutes)
 4. **conflict_warning** - Conflict detected
 5. **graph_update** - Dependency graph updated
 6. **chat_message** - New chat message
@@ -400,14 +410,15 @@ DEDALUS_WEBSOCKET_SECRET=...
 
 ## Key Design Decisions
 
-1. **No Heartbeat:** Lock expiration based solely on timestamp of last status update
-2. **Line-Level Conflicts:** Enables multiple agents on same file (different lines)
+1. **No Heartbeat:** Lock expiration based solely on timestamp of last status update (300s timeout)
+2. **File-Level Locking:** One agent per file at a time (not line-level, not function-level)
 3. **Fresh State:** No caching - every request queries GitHub API + KV
 4. **File Dependencies:** Simple import parsing, no complex AST analysis
 5. **Incremental Graph:** Only reanalyze changed files to save GitHub API quota
 6. **Dedalus WebSocket:** Use Dedalus infrastructure instead of managing our own
 7. **Redis Only:** Vercel KV for all state (no Postgres)
 8. **GitHub as Source of Truth:** repo_head always fetched from GitHub, never cached
+9. **300 Second Timeout:** Locks expire after 5 minutes (300s) with no heartbeat mechanism
 
 ---
 
