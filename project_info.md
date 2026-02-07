@@ -35,33 +35,96 @@
                                        │
 ┌──────────────────────────────────────┼──────────────────────────────────────┐
 │                                      │                                      │
-│                      STREAMING LAYER (FastAPI + WebSocket)                 │
+│                      VERCEL WEBAPP (State + UI + WebSocket)                │
 │                                      │                                      │
-│  ┌──────────────────────────────────────────────────────────────────────┐  │
-│  │              WebSocket Connection Manager                            │  │
-│  │                                                                      │  │
-│  │  • Maintains active connections: Set[WebSocket]                     │  │
-│  │  • Broadcasts events to all clients                                 │  │
-│  │  • Handles client connect/disconnect                                │  │
-│  │  • Streams real-time lock table updates                             │  │
-│  │                                                                      │  │
-│  │  Event Types Broadcast:                                             │  │
-│  │  ┌──────────────────────────────────────────────────────────────┐  │  │
-│  │  │  status_update    → User posted new status (OPEN/READ/WRITE) │  │  │
-│  │  │  activity_posted  → User posted to activity feed             │  │  │
-│  │  │  lock_expired     → Lock timed out (no heartbeat)            │  │  │
-│  │  │  conflict_warning → Multiple users on same symbol            │  │  │
-│  │  │  dependency_warning → Dependency being written               │  │  │
-│  │  └──────────────────────────────────────────────────────────────┘  │  │
-│  └──────────────────────────────────────────────────────────────────────┘  │
-│                                      │                                      │
-└──────────────────────────────────────┼──────────────────────────────────────┘
+│  ┌───────────────────────────────────────────────────────────────────────┐ │
+│  │                      WEBAPP COMPONENTS                                │ │
+│  │                                                                       │ │
+│  │  1. Graph Creator:                                                   │ │
+│  │     • Analyzes codebase and generates dependency graph               │ │
+│  │     • Extracts symbols (functions, classes, etc.)                    │ │
+│  │     • Maps dependencies between symbols                              │ │
+│  │                                                                       │ │
+│  │  2. Status Log:                                                      │ │
+│  │     • Stores all status updates and activity messages                │ │
+│  │     • Queryable history of who did what when                         │ │
+│  │     • Enables time-travel debugging                                  │ │
+│  │                                                                       │ │
+│  │  3. Graph UI:                                                        │ │
+│  │     • Interactive visualization of code graph                        │ │
+│  │     • Real-time status indicators (🔴 WRITING, 🔵 READING)           │ │
+│  │     • Folder-level and symbol-level views                            │ │
+│  │                                                                       │ │
+│  │  4. Chat:                                                            │ │
+│  │     • Agent-to-agent and human-to-agent communication                │ │
+│  │     • Contextual discussions about specific symbols                  │ │
+│  │     • Coordination questions and decisions                           │ │
+│  └───────────────────────────────────────────────────────────────────────┘ │
+│                                                                             │
+│  ┌───────────────────────────────────────────────────────────────────────┐ │
+│  │              WebSocket Connection Manager                             │ │
+│  │                                                                       │ │
+│  │  • Maintains active connections: Set[WebSocket]                      │ │
+│  │  • Broadcasts events to all clients (browsers + agents)              │ │
+│  │  • Handles client connect/disconnect                                 │ │
+│  │  • Streams real-time updates                                         │ │
+│  │                                                                       │ │
+│  │  Event Types Broadcast:                                              │ │
+│  │  ┌──────────────────────────────────────────────────────────────┐   │ │
+│  │  │  status_update    → User posted new status (OPEN/READ/WRITE) │   │ │
+│  │  │  activity_posted  → User posted to activity feed             │   │ │
+│  │  │  lock_expired     → Lock timed out (no heartbeat)            │   │ │
+│  │  │  conflict_warning → Multiple users on same symbol            │   │ │
+│  │  │  dependency_warning → Dependency being written               │   │ │
+│  │  │  chat_message     → New chat message posted                  │   │ │
+│  │  └──────────────────────────────────────────────────────────────┘   │ │
+│  └───────────────────────────────────────────────────────────────────────┘ │
+│                                                                             │
+│  ┌───────────────────────────────────────────────────────────────────────┐ │
+│  │                   WEBAPP STATE (Persistent)                           │ │
+│  │                                                                       │ │
+│  │  • lock_table: Dict[str, LockEntry]                                  │ │
+│  │  • activity_feed: List[ActivityEntry]                                │ │
+│  │  • dependency_graph: Dict[str, List[str]]                            │ │
+│  │  • repo_head: str (latest known HEAD)                                │ │
+│  │  • status_log: List[StatusLogEntry] (full history)                   │ │
+│  │  • chat_messages: List[ChatMessage]                                  │ │
+│  │                                                                       │ │
+│  │  Storage: Vercel KV / Postgres / Redis (your choice)                 │ │
+│  └───────────────────────────────────────────────────────────────────────┘ │
+│                                                                             │
+│  ┌───────────────────────────────────────────────────────────────────────┐ │
+│  │                   WEBAPP API ENDPOINTS                                │ │
+│  │                                                                       │ │
+│  │  POST /api/check_status                                              │ │
+│  │    → Returns: repo_head, locks, recent_activity, stale_status        │ │
+│  │                                                                       │ │
+│  │  POST /api/post_status                                               │ │
+│  │    → Updates lock_table, validates staleness, broadcasts             │ │
+│  │                                                                       │ │
+│  │  POST /api/post_activity                                             │ │
+│  │    → Adds to activity_feed, broadcasts to WebSocket clients          │ │
+│  │                                                                       │ │
+│  │  POST /api/heartbeat                                                 │ │
+│  │    → Updates last_heartbeat timestamp, prevents lock expiration      │ │
+│  │                                                                       │ │
+│  │  POST /api/chat                                                      │ │
+│  │    → Posts chat message, broadcasts to all clients                   │ │
+│  │                                                                       │ │
+│  │  GET /api/graph                                                      │ │
+│  │    → Returns current dependency graph                                │ │
+│  │                                                                       │ │
+│  │  POST /api/generate_graph                                            │ │
+│  │    → Triggers graph generation from codebase                         │ │
+│  └───────────────────────────────────────────────────────────────────────┘ │
+│                                                                             │
+└──────────────────────────────────────┬──────────────────────────────────────┘
                                        │
-                                       │ Internal Event Bus
+                                       │ HTTPS API Calls
                                        │
 ┌──────────────────────────────────────┼──────────────────────────────────────┐
 │                                      ▼                                      │
-│                   COORDINATION LOGIC LAYER (MCP Server)                    │
+│              COORDINATION LOGIC LAYER (MCP Server - STATELESS)             │
 │                                                                             │
 │  ┌───────────────────────────────────────────────────────────────────────┐ │
 │  │                    🔐 Authentication Pipeline                         │ │
@@ -83,7 +146,11 @@
 │  └───────────────────────────────────────────────────────────────────────┘ │
 │                                                                             │
 │  ┌───────────────────────────────────────────────────────────────────────┐ │
-│  │                      MCP Tools (Pydantic Models)                      │ │
+│  │                   MCP Tools (STATELESS - Forward to Webapp)           │ │
+│  │                                                                       │ │
+│  │  CRITICAL: MCP server is STATELESS (Dedalus requirement)             │ │
+│  │  All state lives in the Vercel webapp.                               │ │
+│  │  MCP tools authenticate user, then forward to webapp API.            │ │
 │  │                                                                       │ │
 │  │  @tool(description="...")                                            │ │
 │  │  async def check_interference(                                       │ │
@@ -91,38 +158,73 @@
 │  │  ) -> CheckInterferenceResponse:                                     │ │
 │  │      ctx = get_context()                    ← Dedalus provides this │ │
 │  │      user = authenticate_from_context(ctx)  ← Extract who called    │ │
-│  │      await ctx.info("Checking conflicts")   ← Log progress          │ │
-│  │      conflicts = detect_conflicts(...)      ← Business logic        │ │
-│  │      return CheckInterferenceResponse(...)  ← Type-safe response    │ │
 │  │                                                                       │ │
-│  │  Available Tools:                                                    │ │
+│  │      # Forward to webapp API                                         │ │
+│  │      response = await http_post(                                     │ │
+│  │          f"{WEBAPP_URL}/api/check_status",                           │ │
+│  │          json={                                                      │ │
+│  │              "user_id": user.user_id,                                │ │
+│  │              "symbols": request.symbols,                             │ │
+│  │              "agent_head": request.agent_head                        │ │
+│  │          }                                                            │ │
+│  │      )                                                                │ │
+│  │                                                                       │ │
+│  │      return CheckInterferenceResponse(**response.json())             │ │
+│  │                                                                       │ │
+│  │  Available Tools (all forward to Vercel webapp):                    │ │
 │  │  ┌─────────────────────────────────────────────────────────────────┐│ │
-│  │  │ • check_interference(symbols: List[str])                        ││ │
-│  │  │   → Returns conflicts + dependency warnings                     ││ │
+│  │  │ • check_status(symbols, agent_head)                             ││ │
+│  │  │   → POST /api/check_status                                      ││ │
+│  │  │   → Returns conflicts + dependency warnings + repo state        ││ │
 │  │  │                                                                  ││ │
-│  │  │ • post_status(symbol, status, message)                          ││ │
+│  │  │ • post_status(symbol, status, message, agent_head/new_repo_head)││ │
+│  │  │   → POST /api/post_status                                       ││ │
 │  │  │   → Status: "OPEN" | "READING" | "WRITING"                      ││ │
-│  │  │   → Updates lock table + broadcasts                             ││ │
-│  │  │   → If OPEN: queries git for last commit timestamp              ││ │
+│  │  │   → Webapp updates lock table + broadcasts via WebSocket        ││ │
 │  │  │                                                                  ││ │
-│  │  │ • heartbeat(symbols: List[str])                                 ││ │
-│  │  │   → Keeps locks alive                                           ││ │
+│  │  │ • heartbeat(symbols)                                            ││ │
+│  │  │   → POST /api/heartbeat                                         ││ │
+│  │  │   → Webapp updates last_heartbeat timestamps                    ││ │
 │  │  │                                                                  ││ │
-│  │  │ • post_activity(message, layer, task_type)                      ││ │
-│  │  │   → Post to agent activity feed (like Slack)                    ││ │
+│  │  │ • post_activity(message, scope, intent)                         ││ │
+│  │  │   → POST /api/post_activity                                     ││ │
+│  │  │   → Webapp adds to activity_feed + broadcasts                   ││ │
 │  │  │                                                                  ││ │
-│  │  │ • get_activity_feed(since_timestamp)                            ││ │
-│  │  │   → Pull recent activity updates                                ││ │
+│  │  │ • post_chat(message, context)                                   ││ │
+│  │  │   → POST /api/chat                                              ││ │
+│  │  │   → Webapp stores + broadcasts chat message                     ││ │
 │  │  │                                                                  ││ │
-│  │  │ • get_folder_activity()                                         ││ │
-│  │  │   → Returns aggregated folder-level status                      ││ │
+│  │  │ • get_graph()                                                   ││ │
+│  │  │   → GET /api/graph                                              ││ │
+│  │  │   → Returns current dependency graph from webapp                ││ │
 │  │  └─────────────────────────────────────────────────────────────────┘│ │
 │  └───────────────────────────────────────────────────────────────────────┘ │
 │                                                                             │
 │  ┌───────────────────────────────────────────────────────────────────────┐ │
-│  │                     State Management Layer                            │ │
+│  │                     MCP Server Flow (Stateless)                       │ │
 │  │                                                                       │ │
-│  │  In-Memory Data Structures:                                          │ │
+│  │  Every MCP tool call:                                                │ │
+│  │  1. Authenticate user from Dedalus credentials                       │ │
+│  │  2. Extract user_id, email, name                                     │ │
+│  │  3. Forward request to Vercel webapp API                             │ │
+│  │  4. Return webapp response to agent                                  │ │
+│  │                                                                       │ │
+│  │  NO STATE stored in MCP server itself.                               │ │
+│  │  All state lives in the Vercel webapp.                               │ │
+│  └───────────────────────────────────────────────────────────────────────┘ │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+                                       │
+                                       │ Returns response
+                                       │
+┌──────────────────────────────────────┼──────────────────────────────────────┐
+│                                      ▼                                      │
+│           STATE MANAGEMENT LAYER (Lives in Vercel Webapp, NOT MCP)         │
+│                                                                             │
+│  ┌───────────────────────────────────────────────────────────────────────┐ │
+│  │                     Webapp State Storage                              │ │
+│  │                                                                       │ │
+│  │  Persistent Data Structures (Vercel KV / Postgres / Redis):          │ │
 │  │                                                                       │ │
 │  │  ┌─────────────────────────────────────────────────────────────┐    │ │
 │  │  │ lock_table: Dict[str, LockEntry]                            │    │ │
@@ -221,17 +323,55 @@
 │  │  │   }                                                          │    │ │
 │  │  │ }                                                            │    │ │
 │  │  └─────────────────────────────────────────────────────────────┘    │ │
+│  │                                                                       │ │
+│  │  ┌─────────────────────────────────────────────────────────────┐    │ │
+│  │  │ status_log: List[StatusLogEntry] (NEW - Full History)      │    │ │
+│  │  │                                                              │    │ │
+│  │  │ Permanent record of all status changes and activities       │    │ │
+│  │  │                                                              │    │ │
+│  │  │ [                                                            │    │ │
+│  │  │   {                                                          │    │ │
+│  │  │     id: "log_001",                                          │    │ │
+│  │  │     timestamp: 1234567890.0,                                │    │ │
+│  │  │     user_id: "luka",                                        │    │ │
+│  │  │     action: "status_update",                                │    │ │
+│  │  │     symbol: "auth.ts::validateToken",                       │    │ │
+│  │  │     old_status: "READING",                                  │    │ │
+│  │  │     new_status: "WRITING",                                  │    │ │
+│  │  │     repo_head: "abc123def"                                  │    │ │
+│  │  │   }                                                          │    │ │
+│  │  │ ]                                                            │    │ │
+│  │  └─────────────────────────────────────────────────────────────┘    │ │
+│  │                                                                       │ │
+│  │  ┌─────────────────────────────────────────────────────────────┐    │ │
+│  │  │ chat_messages: List[ChatMessage] (NEW)                      │    │ │
+│  │  │                                                              │    │ │
+│  │  │ [                                                            │    │ │
+│  │  │   {                                                          │    │ │
+│  │  │     id: "chat_001",                                         │    │ │
+│  │  │     timestamp: 1234567890.0,                                │    │ │
+│  │  │     user_id: "luka",                                        │    │ │
+│  │  │     user_name: "Luka",                                      │    │ │
+│  │  │     message: "Should we refactor validateToken first?",     │    │ │
+│  │  │     context: {                                              │    │ │
+│  │  │       symbol: "auth.ts::validateToken",                     │    │ │
+│  │  │       thread_id: "thread_001"                               │    │ │
+│  │  │     }                                                        │    │ │
+│  │  │   }                                                          │    │ │
+│  │  │ ]                                                            │    │ │
+│  │  └─────────────────────────────────────────────────────────────┘    │ │
 │  └───────────────────────────────────────────────────────────────────────┘ │
 │                                                                             │
 │  ┌───────────────────────────────────────────────────────────────────────┐ │
-│  │                   Background Tasks (Async)                            │ │
+│  │                   Background Tasks (Webapp - Async)                   │ │
 │  │                                                                       │ │
 │  │  cleanup_stale_locks():                                              │ │
-│  │  ├─ Runs every 10 seconds                                            │ │
-│  │  ├─ Checks last_heartbeat for each lock                              │ │
+│  │  ├─ Runs every 10 seconds (Vercel cron or background job)            │ │
+│  │  ├─ Checks last_heartbeat for each lock in lock_table                │ │
 │  │  ├─ If > 60 seconds since heartbeat → Expire lock                    │ │
-│  │  ├─ Broadcast "lock_expired" event                                   │ │
-│  │  └─ Remove from lock_table                                           │ │
+│  │  ├─ Broadcast "lock_expired" event via WebSocket                     │ │
+│  │  ├─ Log to status_log                                                │ │
+│  │  └─ Update lock_table (set to OPEN)                                  │ │
 │  │                                                                       │ │
 │  └───────────────────────────────────────────────────────────────────────┘ │
 │                                                                             │
@@ -1063,6 +1203,383 @@ KEY INSIGHTS FROM THIS FLOW:
 
 ---
 
+## CORRECTED ARCHITECTURE: Stateless MCP + Vercel Storage + MCP WebSocket
+
+### **The Actual Flow (Updated)**
+
+```
+┌──────────────────────────────────────────────────────────────────┐
+│                         ARCHITECTURE LAYERS                      │
+└──────────────────────────────────────────────────────────────────┘
+
+1. AGENT
+     ↓ (calls MCP tool via Dedalus)
+
+2. DEDALUS MCP SERVER (STATELESS)
+     ├─ Authenticates user
+     ├─ GET state from Vercel REST API
+     ├─ Applies coordination logic (detect conflicts, etc.)
+     ├─ POST updates to Vercel REST API (if needed)
+     ├─ Broadcasts event via WebSocket to UI clients
+     └─ Returns response to agent
+
+3. VERCEL BACKEND (STATEFUL - REST API)
+     ├─ Stores all state (locks, activity, repo_head, logs)
+     ├─ REST endpoints: /api/state/*, /api/graph/*, /api/logs/*
+     ├─ Connects to GitHub to generate dependency graph
+     └─ Returns state to MCP server
+
+4. UI CLIENTS (Browser)
+     ├─ Connects to MCP WebSocket for real-time updates
+     ├─ Queries Vercel REST API for graph, logs, history
+     └─ Displays interactive graph with live status
+```
+
+### **Key Points:**
+
+1. **MCP Server is STATELESS**
+   - No in-memory state storage
+   - Fetches state from Vercel on every request
+   - Updates Vercel when changes occur
+
+2. **MCP Server HAS WebSocket**
+   - Broadcasts events to UI clients
+   - Events sent AFTER updating Vercel
+   - WebSocket connection managed by Dedalus (stateless)
+
+3. **Vercel Backend is the Source of Truth**
+   - REST API for state storage (GET/POST)
+   - Persists to Vercel KV / Postgres
+   - Connected to GitHub for graph generation
+
+4. **UI Clients Listen to MCP WebSocket**
+   - Real-time updates from MCP broadcasts
+   - Can also query Vercel REST API directly for history
+
+### **Example: post_status Flow**
+
+```
+Agent calls: post_status("auth.ts::validateToken", "WRITING")
+     ↓
+MCP Server (Dedalus):
+  1. Authenticate user → "luka"
+  2. GET /api/state/locks from Vercel
+  3. GET /api/state/repo_head from Vercel
+  4. Check if symbol is locked → No
+  5. Validate agent_head == repo_head → Yes
+  6. POST /api/state/lock to Vercel:
+       {
+         "symbol": "auth.ts::validateToken",
+         "user_id": "luka",
+         "status": "WRITING",
+         "agent_head": "abc123"
+       }
+  7. POST /api/logs/status to Vercel (history)
+  8. Broadcast via WebSocket:
+       {
+         "event": "status_update",
+         "symbol": "auth.ts::validateToken",
+         "user": "luka",
+         "status": "WRITING"
+       }
+  9. Return to agent: { "status": "SUCCESS" }
+     ↓
+UI Clients receive WebSocket event → Update graph in real-time
+```
+
+### **Vercel Backend REST API Endpoints**
+
+**State Storage:**
+- `GET  /api/state/locks` → Fetch all current locks
+- `POST /api/state/lock` → Update/create a lock
+- `DELETE /api/state/lock` → Remove lock (set status → OPEN)
+- `GET  /api/state/repo_head` → Fetch current repo HEAD
+- `POST /api/state/repo_head` → Update repo HEAD
+- `GET  /api/state/activity` → Fetch activity feed
+- `POST /api/state/activity` → Add activity message
+
+**Graph (GitHub Integration):**
+- `POST /api/graph/generate` → Analyze GitHub repo, build graph
+- `GET  /api/graph` → Fetch dependency graph
+- `POST /api/graph/update` → Update graph with new lock statuses
+
+**Logs (History):**
+- `POST /api/logs/status` → Log status change
+- `POST /api/logs/agent` → Log agent activity
+- `GET  /api/logs` → Query historical logs
+
+### **GitHub Integration (in Vercel)**
+
+When `POST /api/graph/generate` is called:
+1. Vercel connects to GitHub API (OAuth token)
+2. Fetches repository contents
+3. Parses files using AST (tree-sitter, babel, etc.)
+4. Extracts symbols (functions, classes, methods)
+5. Builds dependency edges (function calls, imports)
+6. Stores graph in Vercel database
+7. Returns graph structure to caller
+
+### **UI Components (Served by Vercel)**
+
+1. **Graph Visualization**:
+   - Interactive D3.js/Cytoscape graph
+   - Shows symbols with real-time status (🔴 WRITING, 🔵 READING)
+   - Folder-level and symbol-level views
+   - Connects to MCP WebSocket for live updates
+
+2. **Status Log**:
+   - Displays activity feed and status history
+   - Fetches from Vercel REST API
+   - Time-travel debugging
+
+3. **Agent Chat**:
+   - Coordination communication interface
+   - Stores messages in Vercel
+   - Real-time via MCP WebSocket
+
+---
+
+## Critical Architecture Note: Stateless MCP + Vercel Storage
+
+**IMPORTANT:** Dedalus MCP servers are **STATELESS** by design. This means:
+
+- ❌ MCP server CANNOT store any state between calls
+- ❌ No in-memory dictionaries, no persistent data structures
+- ✅ MCP server fetches state from Vercel REST API when needed
+- ✅ MCP server has WebSocket for broadcasting events
+- ✅ ALL persistent state lives in **Vercel backend**
+
+### **The Flow:**
+
+```
+Agent
+  ↓ (MCP tool call with encrypted credentials)
+Dedalus MCP Server (STATELESS)
+  ↓ (authenticate user)
+  ↓ (GET state from Vercel REST API)
+Vercel Backend REST API
+  ↓ (return current state: locks, repo_head, etc.)
+Dedalus MCP Server
+  ↓ (process request using fetched state)
+  ↓ (if update needed: POST to Vercel REST API)
+Vercel Backend REST API
+  ↓ (update state: lock_table, activity_feed, etc.)
+  ↓ (return success)
+Dedalus MCP Server
+  ↓ (broadcast event via WebSocket to UI clients)
+  ↓ (return response to agent)
+Agent
+```
+
+### **Vercel Backend Responsibilities:**
+
+1. **State Storage (REST API)**:
+   - POST /api/state/lock → Update lock_table
+   - GET /api/state/locks → Fetch current locks
+   - POST /api/state/activity → Add activity message
+   - GET /api/state/activity → Fetch activity feed
+   - POST /api/state/repo_head → Update repo HEAD
+   - GET /api/state/repo_head → Fetch current HEAD
+
+2. **Graph Generation (GitHub Integration)**:
+   - Connect to GitHub via API or git clone
+   - Analyze codebase (parse AST, extract symbols)
+   - Build dependency graph
+   - Store graph structure
+   - API: POST /api/graph/generate, GET /api/graph
+
+3. **Status Log**: Full history of all actions (time-travel debugging)
+
+4. **Agent Logs**: Store all agent activity for debugging
+
+### **MCP Server Responsibilities:**
+
+1. **Authenticate**: Extract user identity from Dedalus credentials
+2. **Fetch State**: GET from Vercel REST API when processing requests
+3. **Update State**: POST to Vercel REST API when changes occur
+4. **WebSocket Broadcasting**: Broadcast events to connected UI clients
+5. **Business Logic**: Use fetched state to validate, detect conflicts, enforce rules
+6. **Return Response**: Send result back to agent
+
+**Key Insight:** MCP is stateless but NOT just a passthrough. It:
+- Fetches state from Vercel
+- Applies coordination logic
+- Updates Vercel
+- Broadcasts to UI
+- Returns to agent
+
+---
+
+## Vercel Webapp Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                          VERCEL WEBAPP STACK                                │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+FRONTEND (Browser UI)
+═══════════════════════════════════════════════════════════════
+
+Next.js 14 (App Router)
+├─ /app/page.tsx          → Main dashboard
+├─ /app/graph/page.tsx    → Interactive graph visualization
+├─ /app/chat/page.tsx     → Agent chat interface
+└─ /app/api/              → API routes (backend)
+
+COMPONENTS:
+├─ GraphVisualization     → D3.js / Cytoscape.js graph rendering
+├─ StatusLog              → Real-time activity feed
+├─ FolderView             → Aggregated folder-level status
+├─ ChatPanel              → Chat interface
+└─ StaleIndicator         → Warns if local repo is behind
+
+REAL-TIME:
+├─ WebSocket client       → Receives broadcasts from server
+├─ Optimistic updates     → Update UI immediately, sync later
+└─ Auto-reconnect         → Handle connection drops
+
+BACKEND (API Routes)
+═══════════════════════════════════════════════════════════════
+
+/app/api/check_status/route.ts
+  POST /api/check_status
+  Input: { user_id, symbols, agent_head }
+  Output: { repo_head, locks, recent_activity, stale_status }
+
+/app/api/post_status/route.ts
+  POST /api/post_status
+  Input: { user_id, symbol, status, message, agent_head?, new_repo_head? }
+  Validates: Staleness, conflicts
+  Returns: { status: "SUCCESS" } or { status: "REJECTED", reason: "..." }
+  Side-effects: Updates lock_table, broadcasts event
+
+/app/api/post_activity/route.ts
+  POST /api/post_activity
+  Input: { user_id, summary, scope, intent }
+  Side-effects: Appends to activity_feed, broadcasts
+
+/app/api/heartbeat/route.ts
+  POST /api/heartbeat
+  Input: { user_id, symbols }
+  Side-effects: Updates last_heartbeat timestamps
+
+/app/api/chat/route.ts
+  POST /api/chat
+  Input: { user_id, message, context }
+  Side-effects: Appends to chat_messages, broadcasts
+
+/app/api/graph/route.ts
+  GET /api/graph
+  Output: { nodes: [...], edges: [...] }
+
+/app/api/generate_graph/route.ts
+  POST /api/generate_graph
+  Input: { repo_url, branch }
+  Side-effects: Clones repo, analyzes, builds dependency_graph
+
+WEBSOCKET SERVER
+═══════════════════════════════════════════════════════════════
+
+Built with: Socket.io / Pusher / Ably (your choice)
+
+Connection:
+  wss://your-app.vercel.app/ws
+
+Broadcast events:
+  - status_update
+  - activity_posted
+  - lock_expired
+  - conflict_warning
+  - dependency_warning
+  - chat_message
+
+STATE STORAGE
+═══════════════════════════════════════════════════════════════
+
+Options for Vercel:
+
+1. Vercel KV (Redis) - Fast, key-value
+   ✓ Good for lock_table, repo_head
+   ✓ Fast reads/writes
+   ✗ Limited query capabilities
+
+2. Vercel Postgres - Relational DB
+   ✓ Good for status_log, chat_messages
+   ✓ Complex queries, time-travel
+   ✗ Slower than KV
+
+3. Hybrid Approach (RECOMMENDED):
+   - KV for hot data: lock_table, repo_head, active users
+   - Postgres for history: status_log, chat_messages
+   - In-memory for WebSocket connections
+
+BACKGROUND JOBS
+═══════════════════════════════════════════════════════════════
+
+Vercel Cron Jobs (vercel.json):
+{
+  "crons": [
+    {
+      "path": "/api/cleanup_stale_locks",
+      "schedule": "*/10 * * * * *"  // Every 10 seconds
+    }
+  ]
+}
+
+/app/api/cleanup_stale_locks/route.ts:
+  - Query lock_table
+  - Find locks where last_heartbeat > 60s ago
+  - Set status to OPEN
+  - Broadcast "lock_expired" event
+  - Log to status_log
+
+GRAPH CREATOR
+═══════════════════════════════════════════════════════════════
+
+Analyzes codebase and builds dependency graph:
+
+/app/api/generate_graph/route.ts:
+  1. Clone repo (or use GitHub API)
+  2. Parse files with AST (tree-sitter / babel / swc)
+  3. Extract symbols:
+     - Functions
+     - Classes
+     - Methods
+  4. Build dependency edges:
+     - Function calls
+     - Import statements
+     - Inheritance relationships
+  5. Store in dependency_graph
+  6. Return graph structure
+
+Example tools:
+  - tree-sitter (multi-language parsing)
+  - @babel/parser (JavaScript/TypeScript)
+  - jedi (Python)
+  - rust-analyzer (Rust)
+
+DEPLOYMENT
+═══════════════════════════════════════════════════════════════
+
+vercel.json:
+{
+  "framework": "nextjs",
+  "buildCommand": "npm run build",
+  "env": {
+    "KV_REST_API_URL": "@kv-url",
+    "POSTGRES_URL": "@postgres-url"
+  }
+}
+
+Environment variables:
+  - KV_REST_API_URL: Vercel KV endpoint
+  - KV_REST_API_TOKEN: Auth token
+  - POSTGRES_URL: Database connection string
+  - WEBSOCKET_SECRET: For WebSocket auth
+```
+
+---
+
 ## Diagram 4: Complete Git Integration & Staleness Protocol
 
 ```
@@ -1602,6 +2119,42 @@ To keep the hackathon scope manageable:
 ---
 
 ## Architecture Design Decisions Summary
+
+### 0. **Stateless MCP + Stateful Webapp (CRITICAL)**
+
+**The Core Architecture:**
+
+```
+Agent → Dedalus MCP (stateless) → Vercel Webapp (stateful) → Response
+                                          ↓
+                                    WebSocket broadcast
+                                          ↓
+                                    UI clients
+```
+
+**Dedalus MCP Server (STATELESS):**
+- ❌ NO state storage between calls
+- ✅ Authenticates user from encrypted credentials
+- ✅ Forwards to Vercel webapp API
+- ✅ Returns webapp response to agent
+
+**Vercel Webapp (STATEFUL):**
+- ✅ Stores ALL state: lock_table, activity_feed, repo_head, status_log, chat
+- ✅ Exposes API endpoints: /api/check_status, /api/post_status, etc.
+- ✅ WebSocket server for real-time broadcasts
+- ✅ Background jobs (cleanup stale locks every 10s)
+- ✅ Graph creator (analyzes codebase, builds dependency graph)
+- ✅ Graph UI (interactive visualization)
+- ✅ Status log (full history for time-travel debugging)
+- ✅ Chat (agent-to-agent communication)
+
+**Why This Matters:**
+- Dedalus requires MCP servers to be stateless
+- All persistence happens in the webapp (Vercel KV/Postgres)
+- MCP is just a thin authentication + forwarding layer
+- Webapp handles all business logic, state management, and UI
+
+---
 
 ### 1. **Status Model: OPEN → READING → WRITING**
 
