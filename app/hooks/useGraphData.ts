@@ -76,7 +76,7 @@ interface UseGraphDataReturn {
 
 const initialRepo = 'https://github.com/luljaj/DevFest';
 const initialBranch = 'master';
-const DEFAULT_POLL_INTERVAL_MS = 30_000;
+const DEFAULT_POLL_INTERVAL_MS = 60_000;
 const MIN_POLL_INTERVAL_MS = 5_000;
 const MAX_POLL_INTERVAL_MS = 300_000;
 

@@ -120,7 +120,7 @@ export default function AdminPanel({
                             GitHub Refresh Rate
                         </h3>
                         <p className={`mt-1 text-xs ${isDark ? 'text-zinc-400' : 'text-zinc-500'}`}>
-                            Graph polling interval (default is 30 seconds).
+                            Graph polling interval (default is 60 seconds).
                         </p>
 
                         <div className="mt-3 flex items-center gap-2">

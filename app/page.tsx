@@ -7,7 +7,8 @@ import GraphPanel from './components/GraphPanel';
 import SidebarPanel from './components/SidebarPanel';
 import AdminPanel from './components/AdminPanel';
 
-const DEFAULT_REFRESH_INTERVAL_MS = 30_000;
+const DEFAULT_REFRESH_INTERVAL_MS = 60_000;
+const LEGACY_DEFAULT_REFRESH_INTERVAL_MS = 30_000;
 const MIN_REFRESH_INTERVAL_MS = 5_000;
 const MAX_REFRESH_INTERVAL_MS = 300_000;
 
@@ -56,7 +57,12 @@ export default function HomePage() {
 
     const storedInterval = Number.parseInt(window.localStorage.getItem('devfest_refresh_interval_ms') ?? '', 10);
     if (Number.isFinite(storedInterval)) {
-      setRefreshIntervalMs(normalizeRefreshInterval(storedInterval));
+      const normalized = normalizeRefreshInterval(storedInterval);
+      setRefreshIntervalMs(
+        normalized === LEGACY_DEFAULT_REFRESH_INTERVAL_MS
+          ? DEFAULT_REFRESH_INTERVAL_MS
+          : normalized,
+      );
     }
 
     setPreferencesHydrated(true);
