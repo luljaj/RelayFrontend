@@ -8,7 +8,7 @@
 
 We built Relay specifically for the **Dedalus Labs track**, with the initial goal of leveraging their infrastructure for MCP server hosting. During our integration planning, we consulted with the Dedalus Labs team about our architecture requirements for real-time multi-agent coordination.
 
-After productive discussions, the Dedalus Labs team identified that certain expectations around our use case (specifically, sub-5ms latency requirements for atomic lock operations with shared state between MCP and web UI) weren't currently feasible with their infrastructure model. **The Dedalus Labs team was incredibly supportive** and encouraged us to proceed with a Vercel-hosted MCP implementation while maintaining the core principles of their track challenge.
+After productive discussions, the Dedalus Labs team identified that certain expectations around our use case (specifically, open MCP server hosting through their MCP SDK) weren't currently feasible with their infrastructure model. **The Dedalus Labs team was incredibly supportive** and encouraged us to proceed with a Vercel-hosted MCP implementation while maintaining the core principles of their track challenge.
 
 **What this means**: We built a production-grade MCP server that demonstrates the power of agent coordination protocols - exactly what the Dedalus Labs track is about - while using infrastructure better suited to our real-time locking requirements. We're deeply grateful to Dedalus Labs for their flexibility and guidance.
 
