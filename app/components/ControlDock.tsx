@@ -16,6 +16,14 @@ type GitHubReposPayload = {
     details?: string;
 };
 
+const FALLBACK_REPO: GitHubRepo = {
+    id: -1,
+    full_name: 'luljaj/RelayDevFest',
+    html_url: 'https://github.com/luljaj/RelayDevFest',
+    default_branch: 'master',
+    private: false,
+};
+
 interface ControlDockProps {
     repoUrl: string;
     setRepoUrl: (url: string) => void;
@@ -76,6 +84,13 @@ export default function ControlDock({
             setReposLoading(true);
             setReposError(null);
 
+            const applyFallbackRepo = (message: string) => {
+                setRepos([FALLBACK_REPO]);
+                setRepoUrl(FALLBACK_REPO.html_url);
+                setBranch(FALLBACK_REPO.default_branch);
+                setReposError(`${message} Showing ${FALLBACK_REPO.full_name} instead.`);
+            };
+
             try {
                 const response = await fetch('/api/github/repos', {
                     method: 'GET',
@@ -88,10 +103,12 @@ export default function ControlDock({
                 if (response.status === 429) {
                     // Rate limited - show friendly message
                     const details = payload?.details ?? 'GitHub API rate limit exceeded. Repos cached for 5 minutes.';
-                    setReposError(details);
-                    // Still try to use whatever repos we got back (might be empty array)
-                    if (payload?.repos && Array.isArray(payload.repos)) {
+                    // Still try to use whatever repos we got back.
+                    if (payload?.repos && Array.isArray(payload.repos) && payload.repos.length > 0) {
                         setRepos(payload.repos);
+                        setReposError(details);
+                    } else {
+                        applyFallbackRepo(details);
                     }
                     return;
                 }
@@ -106,6 +123,11 @@ export default function ControlDock({
                     throw new Error('Repository service returned an invalid response.');
                 }
 
+                if (payload.repos.length === 0) {
+                    applyFallbackRepo('No repositories returned by GitHub.');
+                    return;
+                }
+
                 setRepos(payload.repos);
                 setReposError(null); // Clear any previous errors on success
             } catch (error) {
@@ -113,8 +135,7 @@ export default function ControlDock({
                     return;
                 }
                 const message = formatReposError(error);
-                setRepos([]);
-                setReposError(message);
+                applyFallbackRepo(message);
             } finally {
                 if (!controller.signal.aborted) {
                     setReposLoading(false);
