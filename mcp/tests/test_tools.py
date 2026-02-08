@@ -73,6 +73,8 @@ def test_check_status_retries_with_master_when_main_ref_is_missing(monkeypatch) 
     assert len(fake_client.calls) == 2
     assert fake_client.calls[0]["json"]["branch"] == "main"
     assert fake_client.calls[1]["json"]["branch"] == "master"
+    assert fake_client.calls[0]["json"]["repo_url"] == "https://github.com/luljaj/RelayDevFest"
+    assert fake_client.calls[1]["json"]["repo_url"] == "https://github.com/luljaj/RelayDevFest"
 
 
 def test_post_status_preserves_orchestration_from_400_payload(monkeypatch) -> None:
@@ -110,3 +112,4 @@ def test_post_status_preserves_orchestration_from_400_payload(monkeypatch) -> No
     assert result["orchestration"]["action"] == "PUSH"
     assert result["orchestration"]["command"] == "git push"
     assert "Validation error" not in result["orchestration"]["reason"]
+    assert fake_client.calls[0]["json"]["repo_url"] == "https://github.com/luljaj/RelayDevFest"

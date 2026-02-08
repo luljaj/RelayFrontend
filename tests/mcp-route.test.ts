@@ -190,6 +190,7 @@ describe('mcp route', () => {
     const forwardedBody = JSON.parse(String(requestInit?.body ?? '{}'));
 
     expect(forwardedBody.branch).toBe('master');
+    expect(forwardedBody.repo_url).toBe('https://github.com/luljaj/RelayDevFest');
     expect(payload.result.isError).toBe(false);
   });
 
@@ -254,7 +255,9 @@ describe('mcp route', () => {
 
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(firstRequestBody.branch).toBe('master');
+    expect(firstRequestBody.repo_url).toBe('https://github.com/luljaj/RelayDevFest');
     expect(secondRequestBody.branch).toBe('main');
+    expect(secondRequestBody.repo_url).toBe('https://github.com/luljaj/RelayDevFest');
     expect(payload.result.isError).toBe(false);
     expect(payload.result.structuredContent.status).toBe('OK');
   });
@@ -369,6 +372,7 @@ describe('mcp route', () => {
     const forwardedBody = JSON.parse(String(requestInit?.body ?? '{}'));
 
     expect(forwardedBody.branch).toBe('master');
+    expect(forwardedBody.repo_url).toBe('https://github.com/luljaj/RelayDevFest');
     expect(payload.result.isError).toBe(false);
   });
 

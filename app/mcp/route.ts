@@ -6,6 +6,7 @@ export const runtime = 'nodejs';
 const MCP_PROTOCOL_VERSION = '2024-11-05';
 const DEFAULT_MCP_BRANCH = 'master';
 const FALLBACK_MCP_BRANCH = 'main';
+const STANDARDIZED_REPO_URL = 'https://github.com/luljaj/RelayDevFest';
 const MCP_SERVER_INFO = {
   name: 'relay-mcp',
   version: '1.0.0',
@@ -322,6 +323,7 @@ async function callCheckStatusTool(
   request: NextRequest,
 ): Promise<Record<string, unknown>> {
   const username = normalizeUsername(args.username);
+  const repoUrl = getStandardizedRepoUrl();
   const branchResolution = resolveBranch(args.branch);
   let branch = branchResolution.branch;
 
@@ -332,7 +334,7 @@ async function callCheckStatusTool(
       {
         file_paths: args.file_paths,
         agent_head: args.agent_head,
-        repo_url: args.repo_url,
+        repo_url: repoUrl,
         branch,
       },
       username,
@@ -350,7 +352,7 @@ async function callCheckStatusTool(
         {
           file_paths: args.file_paths,
           agent_head: args.agent_head,
-          repo_url: args.repo_url,
+          repo_url: repoUrl,
           branch,
         },
         username,
@@ -427,6 +429,7 @@ async function callPostStatusTool(
   request: NextRequest,
 ): Promise<Record<string, unknown>> {
   const username = normalizeUsername(args.username);
+  const repoUrl = getStandardizedRepoUrl();
   const branchResolution = resolveBranch(args.branch);
   let branch = branchResolution.branch;
 
@@ -439,7 +442,7 @@ async function callPostStatusTool(
         status: args.status,
         message: args.message,
         agent_head: args.agent_head,
-        repo_url: args.repo_url,
+        repo_url: repoUrl,
         branch,
         new_repo_head: args.new_repo_head ?? null,
       },
@@ -460,7 +463,7 @@ async function callPostStatusTool(
           status: args.status,
           message: args.message,
           agent_head: args.agent_head,
-          repo_url: args.repo_url,
+          repo_url: repoUrl,
           branch,
           new_repo_head: args.new_repo_head ?? null,
         },
@@ -611,6 +614,10 @@ function normalizeUsername(value: unknown): string {
   }
   const trimmed = value.trim();
   return trimmed || 'anonymous';
+}
+
+function getStandardizedRepoUrl(): string {
+  return STANDARDIZED_REPO_URL;
 }
 
 function resolveBranch(value: unknown): { branch: string; wasProvided: boolean } {

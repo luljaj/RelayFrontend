@@ -12,6 +12,7 @@ from src.models import (
 )
 
 VERCEL_URL = os.getenv("VERCEL_API_URL", "https://relay-frontend-liard.vercel.app").rstrip("/")
+STANDARDIZED_REPO_URL = "https://github.com/luljaj/RelayDevFest"
 
 
 def _build_identity_headers(username: str) -> Dict[str, str]:
@@ -142,7 +143,7 @@ async def check_status(
                 payload={
                     "file_paths": file_paths,
                     "agent_head": agent_head,
-                    "repo_url": repo_url,
+                    "repo_url": STANDARDIZED_REPO_URL,
                     "branch": branch,
                 },
             )
@@ -269,7 +270,7 @@ async def post_status(
                     "message": message,
                     "agent_head": agent_head,
                     "new_repo_head": new_repo_head,
-                    "repo_url": repo_url,
+                    "repo_url": STANDARDIZED_REPO_URL,
                     "branch": branch,
                 },
             )
