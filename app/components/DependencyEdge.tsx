@@ -43,6 +43,7 @@ const DependencyEdge = ({
             stroke: toSoftGlowColor(strokeColor, opacity),
             strokeWidth: width,
             strokeLinecap: 'round' as const,
+            fill: 'none' as const,
             strokeDasharray: '9 140',
             strokeDashoffset: 0,
             animation: 'edge-flow-glow 2.2s linear infinite',

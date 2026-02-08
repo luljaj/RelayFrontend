@@ -400,6 +400,8 @@ a {
 .react-flow__controls.rf-controls-dark {
   background: rgba(24, 24, 27, 0.88);
   border-color: #3f3f46;
+  border-radius: 0.75rem;
+  overflow: hidden;
 }
 
 .react-flow__controls.rf-controls-dark .react-flow__controls-button {
@@ -415,4 +417,21 @@ a {
 .react-flow__controls.rf-controls-dark .react-flow__controls-button svg {
   fill: currentColor;
   stroke: currentColor;
+}
+
+.react-flow__controls.rf-controls-light {
+  background: rgba(255, 255, 255, 0.78);
+  border-color: #e4e4e7;
+  border-radius: 0.75rem;
+  overflow: hidden;
+}
+
+.react-flow__controls.rf-controls-light .react-flow__controls-button {
+  background: transparent;
+  border-bottom-color: #e4e4e7;
+  color: #52525b;
+}
+
+.react-flow__controls.rf-controls-light .react-flow__controls-button:hover {
+  background: rgba(244, 244, 245, 0.9);
 }
