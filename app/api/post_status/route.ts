@@ -6,6 +6,7 @@ import {
   isGitHubQuotaError,
   parseRepoUrl,
 } from '@/lib/github';
+import { GraphService } from '@/lib/graph-service';
 import { acquireLocks, releaseLocks } from '@/lib/locks';
 import {
   getMissingFields,
@@ -45,8 +46,14 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
     }
 
-    const userId = request.headers.get('x-github-user') || 'anonymous';
-    const userName = request.headers.get('x-github-username') || 'Anonymous';
+    const userId =
+      request.headers.get('x-github-user') ||
+      request.headers.get('x-github-username') ||
+      'anonymous';
+    const userName =
+      request.headers.get('x-github-username') ||
+      request.headers.get('x-github-user') ||
+      'Anonymous';
 
     const { owner, repo } = parseRepoUrl(repoUrl);
     const repoHead = await getRepoHeadCached(owner, repo, branch);
@@ -57,6 +64,7 @@ export async function POST(request: NextRequest) {
           {
             success: false,
             orchestration: {
+              type: 'orchestration_command',
               action: 'PUSH',
               command: 'git push',
               reason: 'You need to push your changes to advance the repo',
@@ -68,10 +76,32 @@ export async function POST(request: NextRequest) {
 
       await releaseLocks(repoUrl, branch, filePaths, userId);
 
+      let orphanedDependencies: string[] = [];
+      try {
+        const graphService = new GraphService(repoUrl, branch);
+        const cachedGraph = await graphService.getCached();
+
+        if (cachedGraph) {
+          const releasedPaths = new Set(filePaths);
+          const dependencyPaths = new Set<string>();
+
+          for (const edge of cachedGraph.edges) {
+            if (releasedPaths.has(edge.target) && !releasedPaths.has(edge.source)) {
+              dependencyPaths.add(edge.source);
+            }
+          }
+
+          orphanedDependencies = Array.from(dependencyPaths);
+        }
+      } catch {
+        // Graph cache is optional for unlock flow; return empty orphaned dependencies on read errors.
+      }
+
       return NextResponse.json({
         success: true,
-        orphaned_dependencies: [],
+        orphaned_dependencies: orphanedDependencies,
         orchestration: {
+          type: 'orchestration_command',
           action: 'PROCEED',
           command: null,
           reason: 'Locks released successfully',
@@ -88,6 +118,7 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({
           success: false,
           orchestration: {
+            type: 'orchestration_command',
             action: 'PULL',
             command: 'git pull --rebase',
             reason: 'Your local repo is behind remote',
@@ -114,6 +145,7 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({
           success: false,
           orchestration: {
+            type: 'orchestration_command',
             action: 'SWITCH_TASK',
             command: null,
             reason: `${lockResult.reason}: ${lockResult.conflictingFile} locked by ${lockResult.conflictingUser}`,
@@ -125,6 +157,7 @@ export async function POST(request: NextRequest) {
         success: true,
         locks: lockResult.locks,
         orchestration: {
+          type: 'orchestration_command',
           action: 'PROCEED',
           command: null,
           reason: 'Locks acquired successfully',
@@ -135,6 +168,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       success: true,
       orchestration: {
+        type: 'orchestration_command',
         action: 'PROCEED',
         command: null,
         reason: 'Reading status recorded',

@@ -43,6 +43,10 @@ interface GraphPanelProps {
 
 const NODE_UPDATE_HIGHLIGHT_MS = 4500;
 const NEW_EDGE_HIGHLIGHT_MS = 2500;
+const NODE_DRIFT_TICK_MS = 120;
+const NODE_DRIFT_MAX_X = 10;
+const NODE_DRIFT_MAX_Y = 7;
+const NODE_DRIFT_BASE_SPEED = 0.00028;
 
 export default function GraphPanel({
     graph,
@@ -61,6 +65,7 @@ export default function GraphPanel({
     const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
     const [updatedNodeExpiry, setUpdatedNodeExpiry] = useState<Record<string, number>>({});
     const [newEdgeExpiry, setNewEdgeExpiry] = useState<Record<string, number>>({});
+    const [driftTimeMs, setDriftTimeMs] = useState<number>(() => Date.now());
     const previousLocksRef = useRef<Record<string, LockEntry>>({});
     const previousEdgesRef = useRef<Set<string>>(new Set());
 
@@ -70,6 +75,14 @@ export default function GraphPanel({
             setUpdatedNodeExpiry((previous) => pruneExpired(previous, now));
             setNewEdgeExpiry((previous) => pruneExpired(previous, now));
         }, 700);
+
+        return () => clearInterval(interval);
+    }, []);
+
+    useEffect(() => {
+        const interval = setInterval(() => {
+            setDriftTimeMs(Date.now());
+        }, NODE_DRIFT_TICK_MS);
 
         return () => clearInterval(interval);
     }, []);
@@ -157,11 +170,15 @@ export default function GraphPanel({
             const col = index % columns;
             const lock = graph.locks[node.id];
             const isUpdated = (updatedNodeExpiry[node.id] ?? 0) > now;
+            const driftOffset = getNodeDriftOffset(node.id, driftTimeMs);
 
             return {
                 id: node.id,
                 type: 'activeFile',
-                position: { x: col * xStep, y: row * yStep },
+                position: {
+                    x: col * xStep + driftOffset.x,
+                    y: row * yStep + driftOffset.y,
+                },
                 data: {
                     path: node.id,
                     fileName: node.id,
@@ -206,7 +223,7 @@ export default function GraphPanel({
         });
 
         return { nodes, edges };
-    }, [graph, updatedNodeExpiry, newEdgeExpiry, isDark]);
+    }, [graph, updatedNodeExpiry, newEdgeExpiry, isDark, driftTimeMs]);
 
     const onNodeClick: NodeMouseHandler = useCallback((_, node) => {
         setSelectedNodeId(node.id);
@@ -341,6 +358,26 @@ function neutralTone(seed: string): string {
         hash = (hash * 31 + seed.charCodeAt(index)) >>> 0;
     }
     return tones[hash % tones.length];
+}
+
+function getNodeDriftOffset(seed: string, timeMs: number): { x: number; y: number } {
+    const hash = hashSeed(seed);
+    const phase = (hash % 360) * (Math.PI / 180);
+    const xSpeed = NODE_DRIFT_BASE_SPEED + (hash % 9) * 0.00002;
+    const ySpeed = NODE_DRIFT_BASE_SPEED * 0.82 + (hash % 7) * 0.000018;
+
+    return {
+        x: Math.sin(timeMs * xSpeed + phase) * NODE_DRIFT_MAX_X,
+        y: Math.cos(timeMs * ySpeed + phase * 1.31) * NODE_DRIFT_MAX_Y,
+    };
+}
+
+function hashSeed(input: string): number {
+    let hash = 0;
+    for (let index = 0; index < input.length; index += 1) {
+        hash = (hash * 31 + input.charCodeAt(index)) >>> 0;
+    }
+    return hash;
 }
 
 function normalizeRepoUrl(input: string): string {

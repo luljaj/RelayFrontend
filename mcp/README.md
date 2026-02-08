@@ -18,7 +18,7 @@ cp .env.example .env
 
 Defaults:
 
-- `VERCEL_API_URL=https://relay_devfest.vercel.app`
+- `VERCEL_API_URL=https://relay-frontend-liard.vercel.app`
 - `LOG_LEVEL=INFO`
 
 ## Run
