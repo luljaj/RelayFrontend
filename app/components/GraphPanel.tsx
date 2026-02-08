@@ -48,10 +48,10 @@ const LAYOUT_Y_STEP = 210;
 const LAYOUT_SPAWN_JITTER = 24;
 const LAYOUT_TICK_MS = 42;
 const LAYOUT_EDGE_LENGTH = 120; // Reduce edge length to keep hierarchy tighter
-const LAYOUT_EDGE_SPRING = 0.01; // Reduced spring strength to prevent tight clumping
-const LAYOUT_REPULSION = 25000; // Strong repulsion to prevent overlap
-const LAYOUT_REPULSION_MIN_DISTANCE = 160; // Large personal space
-const LAYOUT_CENTER_GRAVITY = 0.015; // Reduced gravity to prevent center collapse
+const LAYOUT_EDGE_SPRING = 0.08; // Strong springs to keep structure tight
+const LAYOUT_REPULSION = 12000; // Reduced repulsion to prevent infinite spread
+const LAYOUT_REPULSION_MIN_DISTANCE = 140; // Moderate personal space
+const LAYOUT_CENTER_GRAVITY = 0.001; // Minimal gravity just to keep it loosely on screen
 const LAYOUT_SAME_FOLDER_TARGET = 100;
 const LAYOUT_SAME_FOLDER_RANGE = 2000;
 const LAYOUT_SAME_FOLDER_PULL = 0.008;
@@ -66,8 +66,8 @@ const LAYOUT_FOLDER_GROUP_X_STEP = 520;
 const LAYOUT_FOLDER_GROUP_Y_STEP = 340;
 const LAYOUT_FOLDER_ITEM_X_STEP = 260;
 const LAYOUT_FOLDER_ITEM_Y_STEP = 130;
-const LAYOUT_DAMPING = 0.92; // High friction for "floating" feel (closer to 1 = slippery, lower = thick fluid)
-const LAYOUT_MAX_SPEED = 1.0; // Very slow, drift-like movement
+const LAYOUT_DAMPING = 0.60; // High friction/viscosity to stop movement quickly
+const LAYOUT_MAX_SPEED = 0.4; // Very slow, deliberate movement cap
 const VIEW_TRANSITION_OVERLAY_MS = 1000;
 
 type Point = { x: number; y: number };
@@ -451,18 +451,34 @@ export default function GraphPanel({
             const targetLock = graph.locks[edge.target];
             const isLockedEdge = !!sourceLock || !!targetLock;
 
-            // High contrast colors (Black/White)
-            const baseStroke = isDark ? '#ffffff' : '#000000';
-            const activeStroke = isDark ? '#ffffff' : '#000000';
+            // Colors for backend-driven states
+            const colorNew = '#10b981'; // Emerald-500
+            const colorLocked = '#f59e0b'; // Amber-500
+            const colorBase = isDark ? '#52525b' : '#a1a1aa'; // Zinc-600 / Zinc-400
 
-            const stroke = isNew || isLockedEdge ? activeStroke : baseStroke;
+            let stroke = colorBase;
+            let strokeWidth = 1.1;
+            let opacity = 0.6;
+            let animated = false;
+
+            if (isNew) {
+                stroke = colorNew;
+                strokeWidth = 2.5;
+                opacity = 1;
+                animated = true;
+            } else if (isLockedEdge) {
+                stroke = colorLocked;
+                strokeWidth = 2;
+                opacity = 0.9;
+                animated = true;
+            }
 
             return {
                 id: edgeId,
                 source: edge.source,
                 target: edge.target,
                 type: 'dependency',
-                animated: isNew || isLockedEdge,
+                animated,
                 markerEnd: {
                     type: MarkerType.ArrowClosed,
                     color: stroke,
@@ -471,8 +487,8 @@ export default function GraphPanel({
                 },
                 style: {
                     stroke,
-                    strokeWidth: isNew ? 2 : 1.1,
-                    opacity: isNew ? 1 : 0.7,
+                    strokeWidth,
+                    opacity,
                 },
                 data: {
                     isNew,
