@@ -1,6 +1,6 @@
-# Relay: Multi-Agent Coordination for Modern Dev Teams
+# Relay: The Coordination Layer for AI Coding Agents
 
-> **🏅 Built for DevFest 2026 - Dedalus Labs Track**
+> **🏅 Built for DevFest 2026 — Dedalus Labs Track**
 
 ---
 
@@ -10,87 +10,75 @@ We built Relay specifically for the **Dedalus Labs track**, with the initial goa
 
 After productive discussions, the Dedalus Labs team identified that certain expectations around our use case (specifically, open MCP server hosting through their MCP SDK) weren't currently feasible with their infrastructure model. **The Dedalus Labs team was incredibly supportive** and encouraged us to proceed with a Vercel-hosted MCP implementation while maintaining the core principles of their track challenge.
 
-**What this means**: We built a production-grade MCP server that demonstrates the power of agent coordination protocols - exactly what the Dedalus Labs track is about - while using infrastructure better suited to our real-time locking requirements. We're deeply grateful to Dedalus Labs for their flexibility and guidance.
+**What this means**: We built a production-grade MCP server that demonstrates the power of agent coordination protocols — exactly what the Dedalus Labs track is about — while using infrastructure better suited to our real-time locking requirements. We're deeply grateful to Dedalus Labs for their flexibility and guidance.
 
 ---
 
 ## 🎯 The Problem
 
-Multi-agent teams waste hours on invisible collisions:
-- Stale branches discovered at PR time
-- Merge conflicts that block 3+ developers
-- Agents editing the same files simultaneously
-- Duplicated work because nobody knows who's doing what
+AI coding agents are no longer experimental — they're standard. Teams run Claude Code, Cursor, Cline, and Copilot side by side, and every developer on a team is delegating real work to their own agent. This is great for individual velocity. It's a disaster for team coordination.
 
-When you're racing against a hackathon clock, these coordination failures can kill momentum.
+The issue: **agents can't talk to each other.** Each one operates in total isolation. Developer A's agent has no idea that Developer B's agent is rewriting the same authentication module. Developer C's agent refactors a shared utility while two other agents depend on the old interface. Nobody finds out until PR time, when hours of parallel work collide into merge conflicts, broken builds, and wasted effort.
 
-## 🚀 Our Solution
+This isn't a hypothetical — it's the default experience for any team running multiple agents on a shared codebase. And there's no coordination infrastructure to prevent it. Git doesn't solve it. Branch strategies don't solve it. The agents themselves have no protocol for signaling intent, checking availability, or yielding to each other.
 
-Relay surfaces conflicts *before* they happen. Agents check file availability, claim locks, and get smart orchestration commands (`PULL`, `SWITCH_TASK`, `PROCEED`) - all through a **native MCP integration** that works with any MCP-compatible agent.
+**Relay is that protocol.** A shared coordination channel where agents communicate what they're working on, check what's taken, and stay out of each other's way — automatically, through a native MCP integration.
+
+---
+
+## 🚀 What Relay Does
+
+Relay gives AI coding agents a shared communication layer so teams can run multiple agents in parallel without collisions.
+
+**Lock-Based Coordination**
+Agents claim `READING` or `WRITING` locks before touching files. Atomic multi-file locking prevents race conditions. Locks auto-expire after 5 minutes so stale claims never block the team.
+
+**Dependency-Aware Conflict Detection**
+Relay builds live dependency graphs from your repository's imports (JS/TS/Python). It detects both **direct conflicts** (two agents targeting the same file) and **neighbor conflicts** (an agent editing a file that another agent's target depends on). This catches the subtle breakages that file-level locking alone would miss.
+
+**Orchestration Commands**
+When an agent checks in, Relay returns a clear directive:
+- `PROCEED` — you're clear to edit
+- `SWITCH_TASK` — file is locked, work on something else
+- `PULL` — your branch is stale, sync first
+- `PUSH` — time to commit and release locks
+
+**Native MCP Integration** ⭐
+Relay exposes a native MCP endpoint at `/mcp` (HTTP + SSE, JSON-RPC 2.0). Two tools — `check_status` and `post_status` — work with any MCP-compatible agent. No SDK, no wrapper, no custom integration. If your agent speaks MCP, it speaks Relay.
 
 ---
 
 ## 🎬 Demo
 
-> **📹 ADD DEMO VIDEO/GIF HERE (45-90 seconds)**
+> **📹 ADD DEMO VIDEO/GIF HERE (45–90 seconds)**
 >
 > Show:
 > 1. Agent A claims `WRITING` lock on `auth.ts`
 > 2. Agent B tries to edit the same file, gets `SWITCH_TASK` command
-> 3. Agent B pivots to neighbor-safe work automatically
+> 3. Agent B pivots to safe work automatically
 > 4. Live dependency graph updates with lock badges
 
-### Key Screenshots to Add Before Judging
+### Key Screenshots
 
 - 📊 Home graph view with active lock badges
 - 📝 Activity timeline showing lock transitions
 - 🔧 MCP tool call output (`check_status` and `post_status`)
 
-### Architecture Overview
-
-> **🏗️ ADD `docs/architecture.png` SHOWING:**
-> - Next.js UI + API routes
-> - Vercel KV (Redis) for atomic locks
-> - GitHub API for dependency ingestion
-> - **Native `/mcp` endpoint** (MCP track focus)
-> - Optional Python MCP proxy server
-
 ---
 
-## 💡 What It Does
+## 🏆 Why This Matters
 
-**Lock-Based Coordination**
-- Agents claim `READING` or `WRITING` locks before touching files
-- Atomic multi-file locking prevents race conditions
-- 5-minute TTL with automatic cleanup for stale locks
+Agent adoption is accelerating faster than team tooling can keep up. Every dev team is about to have 3, 5, 10 agents running simultaneously — and right now, the coordination infrastructure simply doesn't exist.
 
-**Smart Dependency Awareness**
-- Builds live dependency graphs from repository imports (JS/TS/Python)
-- Detects both **direct conflicts** (same file) and **neighbor conflicts** (dependent files)
-- Graph updates in real-time as agents work
+Relay is the missing layer:
+- **Prevents wasted work** — agents know what's taken before they start
+- **Catches invisible conflicts** — dependency-aware detection goes beyond file-level collisions
+- **Scales naturally** — works for 2 agents or a full team
+- **Zero friction** — native MCP means agents coordinate without developer intervention
 
-**Orchestration Commands**
-- `PULL` - your branch is stale, sync first
-- `SWITCH_TASK` - file is locked, work on something else
-- `PROCEED` - you're clear to edit
-- `PUSH` - time to commit and release locks
-
-**MCP Integration** ⭐ **(Our Track Focus)**
-- Native MCP endpoint at `/mcp` (HTTP + SSE)
-- Two tools: `check_status` and `post_status`
-- Works with any MCP-compatible agent (Claude Code, Cline, etc.)
+This isn't just a merge conflict reducer. It's the communication protocol that multi-agent teams need to function.
 
 ---
-
-## 🏆 Why This Matters for DevFest
-
-Hackathon teams don't have time for coordination overhead. Relay turns "who's editing what?" into an API contract that both AI agents and humans follow automatically.
-
-**Impact**:
-- ⚡ Prevents wasted work from merge conflicts
-- 🎯 Keeps agents focused on safe, parallel work
-- 📈 Scales from 2 agents to full teams
-- 🤖 First-class MCP integration for agent workflows
 
 ## 🚀 Try It Out
 
@@ -122,7 +110,7 @@ GITHUB_TOKEN=optional_github_pat
 npm run dev
 ```
 
-Open `http://localhost:3000` - you should see the live dependency graph UI.
+Open `http://localhost:3000` — you should see the live dependency graph UI.
 
 ### 3. Test the coordination API
 
@@ -147,7 +135,7 @@ curl -s -X POST http://localhost:3000/api/post_status \
 curl -s "http://localhost:3000/api/graph?repo_url=$REPO_URL&branch=$BRANCH" | jq '.metadata,.locks'
 ```
 
-### 4. Validate MCP endpoint (Track Requirement)
+### 4. Validate MCP endpoint
 
 ```bash
 curl -s http://localhost:3000/mcp \
@@ -158,52 +146,31 @@ curl -s http://localhost:3000/mcp \
 
 You should see the `check_status` and `post_status` tools listed.
 
+---
+
 ## 🛠️ How We Built It
 
 ### MCP Integration Strategy (Dedalus Labs Track)
 
-Our architecture centers on **MCP (Model Context Protocol)** as the coordination layer - exactly the kind of agent-first thinking the Dedalus Labs track champions.
+Our architecture centers on **MCP (Model Context Protocol)** as the coordination layer — exactly the kind of agent-first infrastructure the Dedalus Labs track champions.
 
-**Infrastructure Decision (with Dedalus Labs guidance)**:
+We initially designed around Dedalus Labs infrastructure for MCP hosting. However, our real-time coordination use case required sub-5ms atomic lock operations, shared state between MCP tools and the web UI, and synchronous lock validation before returning orchestration commands. After consulting with the Dedalus Labs team, we learned these requirements weren't achievable with their current infrastructure model. **They were incredibly helpful** in guiding us toward a Vercel-hosted approach that still embodies the track's core principles.
 
-We initially designed around Dedalus Labs infrastructure for MCP hosting. However, our real-time coordination use case required:
-- Sub-5ms atomic lock operations across multiple files
-- Shared state between MCP tools and web UI (same Redis instance)
-- Synchronous lock validation before returning orchestration commands
-
-After consulting with the Dedalus Labs team, we learned these latency and state-sharing requirements weren't achievable with their current infrastructure model. **The Dedalus Labs team was incredibly helpful** in guiding us toward a Vercel-hosted approach that still embodies the track's core principles: building production-ready MCP integrations that solve real agent coordination problems.
-
-**Our MCP Implementation** (Dedalus Labs track-aligned):
-- ✅ **Native MCP protocol** in Next.js (`/mcp` route with JSON-RPC 2.0)
-- ✅ **Production-grade error handling** (rate limits, offline fallbacks, validation)
-- ✅ **Real agent workflow** (solves actual multi-agent file conflicts)
-- ✅ **Full protocol compliance** (SSE streaming, tool schemas, capabilities)
-
-The Vercel deployment gave us the performance we needed while letting us focus on what Dedalus Labs cares about: **building MCP tools that agents actually use in production**.
+**Our MCP Implementation**:
+- ✅ Native MCP protocol in Next.js (`/mcp` route with JSON-RPC 2.0)
+- ✅ Production-grade error handling (rate limits, offline fallbacks, validation)
+- ✅ Real agent workflow (solves actual multi-agent file conflicts)
+- ✅ Full protocol compliance (SSE streaming, tool schemas, capabilities)
 
 ### Core Technical Components
 
-**Lock Orchestration**
-- `lib/locks.ts`: Lua-backed atomic multi-file lock transactions in Vercel KV (Redis)
-- `app/api/check_status`: Stale-branch detection + lock-aware orchestration logic
-- `app/api/post_status`: Atomic lock acquire/release with ownership validation
+**Lock Orchestration** — `lib/locks.ts` uses Lua-backed atomic multi-file lock transactions in Vercel KV (Redis). `check_status` handles stale-branch detection and lock-aware orchestration. `post_status` handles atomic lock acquire/release with ownership validation.
 
-**Dependency Graph Engine**
-- `lib/graph-service.ts`: GitHub API integration with intelligent caching and rate-limit handling
-- `lib/parser.ts`: Regex-based import parsing for JS/TS/Python (no AST overhead)
-- Real-time graph updates with WebSocket broadcasts (planned feature)
+**Dependency Graph Engine** — `lib/graph-service.ts` integrates with the GitHub API with intelligent caching and rate-limit handling. `lib/parser.ts` uses regex-based import parsing for JS/TS/Python (no AST overhead — 10x faster for our use case).
 
-**MCP Protocol Implementation**
-- `app/mcp/route.ts`: Native MCP JSON-RPC endpoint (HTTP + SSE streaming)
-- Supports `tools/list` and `tools/call` methods
-- Graceful fallback handling for rate limits and offline scenarios
-- `mcp/src/tools.py`: Optional standalone Python MCP proxy (alternative deployment mode)
+**MCP Protocol** — `app/mcp/route.ts` implements a native MCP JSON-RPC endpoint with HTTP + SSE streaming, supporting `tools/list` and `tools/call` with graceful fallback handling. An optional standalone Python MCP proxy is available in `mcp/src/` for alternative deployments.
 
-**Frontend**
-- Next.js 14 with React 18 and TypeScript
-- ReactFlow for interactive dependency graph visualization
-- Framer Motion for lock transition animations
-- Real-time polling with intelligent backoff
+**Frontend** — Next.js 14 with React 18 and TypeScript. ReactFlow for interactive dependency graph visualization. Framer Motion for lock transition animations. Real-time polling with intelligent backoff.
 
 ### Tech Stack
 
@@ -214,30 +181,26 @@ The Vercel deployment gave us the performance we needed while letting us focus o
 - **Visualization**: ReactFlow, Framer Motion, Radix UI
 - **Testing**: Vitest for API routes and service layer
 
+---
+
 ## 💪 Challenges We Overcame
 
-**1. Architecture Constraints → Collaborative Problem-Solving with Dedalus Labs**
+**Architecture Constraints → Collaborative Problem-Solving**
+Our real-time locking requirements didn't align with Dedalus Labs' current infrastructure model. Instead of just telling us "no," the Dedalus Labs team engaged with us to understand our constraints and encouraged us to find infrastructure that met our needs while staying true to the track's mission. This let us focus on protocol implementation rather than fighting infrastructure.
 
-Our ambitious real-time locking requirements (sub-5ms latency, shared state between MCP and UI) didn't align with Dedalus Labs' current infrastructure model. **Instead of just telling us "no," the Dedalus Labs team engaged with us** to understand our constraints and encouraged us to find infrastructure that met our needs while staying true to the track's mission: building production-ready MCP integrations. This collaborative approach let us focus on the protocol implementation rather than fighting infrastructure limitations.
+**Atomic Multi-File Locking**
+Race conditions were inevitable with naive lock implementations. Redis Lua scripts (`kv.eval`) gave us single-transaction acquire/release across multiple files, guaranteeing atomicity under high agent concurrency.
 
-**2. Atomic Multi-File Locking**
+**GitHub API Rate Limits**
+Dependency graphs require dozens of API calls per repo. We implemented aggressive graph caching (invalidate only on HEAD changes), conditional requests with ETags, and graceful degradation that serves cached graphs when rate-limited.
 
-Race conditions were inevitable with naive lock implementations. Solution: Redis Lua scripts (`kv.eval`) that acquire/release multiple file locks in a single transaction. This guarantees atomicity even under high agent concurrency.
+**Direct vs. Neighbor Conflicts**
+File-level locking wasn't enough. Adding dependency-aware neighbor conflict detection required a real-time graph ingestion pipeline and overlay logic in `check_status` — catching the subtle breakages where editing one file breaks another agent's dependency chain.
 
-**3. GitHub API Rate Limits**
+**UI Responsiveness vs. API Costs**
+Polling every second hammered our APIs. Exponential backoff (1s → 2s → 5s when idle) and event-driven updates for lock changes kept things responsive without burning quota.
 
-With dependency graphs requiring dozens of API calls, we hit quota limits fast. We implemented:
-- Aggressive graph caching (invalidate only on repo HEAD changes)
-- Conditional requests with ETags
-- Graceful degradation (serve cached graphs when rate-limited)
-
-**4. Direct vs. Neighbor Conflicts**
-
-Initially only detected direct file conflicts. Adding dependency-aware "neighbor conflicts" required building a real-time graph ingestion pipeline and overlay logic in `check_status`.
-
-**5. UI Responsiveness vs. API Costs**
-
-Polling every second hammered our APIs. We implemented exponential backoff (1s → 2s → 5s when idle) and switched to event-driven updates for lock changes.
+---
 
 ## 📁 Project Structure
 
@@ -269,54 +232,46 @@ relay/
     └── mcp-route.test.ts   # MCP protocol compliance tests
 ```
 
-## 👥 Team Roles
-
-**(Fill in with your actual team members)**
-
-- **[Name]**: Coordination backend + Lua lock orchestration
-- **[Name]**: Dependency graph visualization + UI/UX design
-- **[Name]**: MCP integration + Dedalus Labs troubleshooting/pivot
-- **[Name]**: GitHub API integration + rate-limit handling
+---
 
 ## 🔮 What's Next
 
-**Short-term (Post-Hackathon)**
-- **Multi-repo awareness**: Detect cross-repo conflicts when agents work on microservices
-- **Smart file recommendations**: When `SWITCH_TASK` fires, suggest neighbor-safe files to work on
-- **WebSocket live updates**: Replace polling with event-driven graph updates
+**Short-term**
+- Multi-repo awareness for cross-service conflict detection
+- Smart file recommendations when `SWITCH_TASK` fires (suggest neighbor-safe files)
+- WebSocket live updates to replace polling
 
-**Long-term Vision**
-- **Historical analytics**: Identify lock hot-spots and merge-risk trends over time
-- **Expanded MCP tooling**: `batch_plan_files`, `auto_retry_on_unlock`, `branch_health_check`
-- **AI-powered conflict resolution**: Suggest merge strategies based on lock history
-- **Team collaboration features**: Slack/Discord integration, @-mentions in lock messages
-- **Enterprise deployment**: Self-hosted option with custom Redis clusters
+**Long-term**
+- Historical analytics to identify lock hot-spots and merge-risk trends
+- Expanded MCP tooling (`batch_plan_files`, `auto_retry_on_unlock`, `branch_health_check`)
+- AI-powered conflict resolution with merge strategies based on lock history
+- Slack/Discord integration for team-level coordination visibility
+- Self-hosted enterprise deployment with custom Redis clusters
+
+---
 
 ## 💭 What We Learned
 
 **Technical Insights**
-- **MCP protocol flexibility**: Building MCP endpoints directly in Next.js was easier than expected - no need for separate server infrastructure
-- **Lua scripts are magical**: Redis Lua scripts gave us true atomicity without complex distributed locking patterns
-- **Regex beats AST parsing**: For dependency graphs, simple regex on imports was 10x faster than full AST parsing
-- **Graceful degradation matters**: Offline/rate-limit fallbacks turned blocking errors into usable warnings
+- Building MCP endpoints directly in Next.js was easier than expected — no need for separate server infrastructure
+- Redis Lua scripts gave us true atomicity without complex distributed locking patterns
+- Regex-based import parsing was 10x faster than full AST parsing for dependency graphs
+- Graceful degradation turned blocking errors into usable warnings — critical for agent workflows that can't afford to stall
 
 **Hackathon Lessons**
-- **Ask for help early**: The Dedalus Labs team's willingness to discuss our constraints saved us from building something that wouldn't work
-- **Track sponsors want you to succeed**: Dedalus Labs gave us flexibility on infrastructure while keeping the focus on MCP protocol excellence
-- **Scope ruthlessly**: We cut chat features and multi-repo support to nail the core lock orchestration
-- **Test the happy path first**: Getting `check_status` → `post_status` → `OPEN` working end-to-end built confidence fast
-- **Judge perspective matters**: Writing this README forced us to articulate *why* Relay matters, not just *what* it does
+- Ask for help early — the Dedalus Labs team's willingness to discuss our constraints saved us from building on the wrong foundation
+- Scope ruthlessly — we cut chat features and multi-repo support to nail core lock orchestration
+- Test the happy path first — getting `check_status` → `post_status` → `PROCEED` working end-to-end built confidence fast
 
 **What surprised us**
 - How fast dependency graphs grow (600+ files → 2000+ edges in a medium repo)
-- GitHub API rate limits hit way earlier than expected (solved with aggressive caching)
-- Agents actually follow orchestration commands when we return clear `action` values
-- Vercel KV (Redis) is fast enough for real-time coordination even at <5ms p99 latency
-- **The Dedalus Labs team's supportiveness** - they genuinely wanted to help us build something great for their track
+- GitHub API rate limits hit way earlier than expected
+- Agents actually follow orchestration commands when you return clear `action` values
+- Vercel KV is fast enough for real-time coordination at <5ms p99 latency
+
+---
 
 ## 🧪 For Dedalus Labs Judges: Validating Our MCP Integration
-
-Our MCP implementation follows the official MCP protocol spec and embodies the principles of the Dedalus Labs track. Here's how to verify:
 
 **1. MCP Endpoint Discovery**
 ```bash
@@ -325,7 +280,7 @@ curl http://localhost:3000/mcp \
   -H "Content-Type: application/json" \
   -d '{"jsonrpc":"2.0","id":1,"method":"initialize"}' | head -20
 ```
-✅ Should return protocol version `2024-11-05` and server capabilities
+✅ Returns protocol version `2024-11-05` and server capabilities
 
 **2. Tool Discovery**
 ```bash
@@ -334,7 +289,7 @@ curl http://localhost:3000/mcp \
   -H "Content-Type: application/json" \
   -d '{"jsonrpc":"2.0","id":2,"method":"tools/list"}' | jq '.result.tools'
 ```
-✅ Should list `check_status` and `post_status` tools with full schemas
+✅ Lists `check_status` and `post_status` tools with full schemas
 
 **3. Tool Execution (Real Agent Workflow)**
 ```bash
@@ -357,15 +312,14 @@ curl http://localhost:3000/mcp \
     }
   }' | jq '.result.structuredContent'
 ```
-✅ Should return orchestration command with lock status
+✅ Returns orchestration command with lock status
 
 **Why This Fits the Dedalus Labs Track**:
-
-1. **Production-Ready MCP Protocol** - Full JSON-RPC 2.0 compliance with SSE streaming
-2. **Real Agent Problem** - Solves actual multi-agent coordination (not a toy demo)
-3. **Proper Error Handling** - Graceful degradation for rate limits, timeouts, offline scenarios
-4. **Tool Schema Validation** - Complete `inputSchema`/`outputSchema` definitions
-5. **Scalable Architecture** - Same MCP endpoint serves both UI and agent traffic
+1. **Production-Ready MCP Protocol** — Full JSON-RPC 2.0 compliance with SSE streaming
+2. **Real Agent Problem** — Solves actual multi-agent coordination, not a toy demo
+3. **Proper Error Handling** — Graceful degradation for rate limits, timeouts, offline scenarios
+4. **Tool Schema Validation** — Complete `inputSchema`/`outputSchema` definitions
+5. **Scalable Architecture** — Same MCP endpoint serves both UI and agent traffic
 
 **MCP Protocol Compliance Checklist**:
 - ✅ JSON-RPC 2.0 message format
@@ -375,10 +329,12 @@ curl http://localhost:3000/mcp \
 - ✅ Tool execution via `tools/call`
 - ✅ Server initialization handshake
 
+---
+
 ## 📜 Scripts
 
-- `npm run dev` - Start development server
-- `npm run build` - Production build
-- `npm run start` - Run production server
-- `npm run typecheck` - TypeScript validation
-- `npm run test` - Run Vitest test suite
+- `npm run dev` — Start development server
+- `npm run build` — Production build
+- `npm run start` — Run production server
+- `npm run typecheck` — TypeScript validation
+- `npm run test` — Run Vitest test suite
