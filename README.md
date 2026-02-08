@@ -72,11 +72,10 @@ Relay exposes a native MCP endpoint at `/mcp` (HTTP + SSE, JSON-RPC 2.0). Two to
 **Video 2: Agent pivot + live graph coordination**
 - [Open demo clip](docs/video2.mov)
 
-Show:
-1. Agent A claims `WRITING` lock on `auth.ts`
-2. Agent B tries to edit the same file, gets `SWITCH_TASK` command
-3. Agent B pivots to safe work automatically
-4. Live dependency graph updates with lock badges
+**DevFest Submission Video**
+- [Watch on YouTube](https://youtu.be/ReYo7U9vzDE)
+
+![Relay dependency graph screenshot](docs/demo-screenshot.png)
 
 ### Key Screenshots
 
