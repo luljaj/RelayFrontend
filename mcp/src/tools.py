@@ -122,7 +122,7 @@ async def check_status(
     """Check status of files before editing. Returns orchestration commands.
 
     Args:
-        username: Stable agent identity for lock attribution; choose once as "model-randomword" (e.g., "gpt5-orchid") and keep using the same value
+        username: Stable agent identity for lock attribution; choose once as "(model)-(random word)-(agent owner github username)" (e.g., "gpt5-orchid-lukauljaj") and keep using the same value
         file_paths: List of file paths (e.g., ["src/auth.ts", "src/db.ts"])
         agent_head: Current git HEAD SHA
         repo_url: Repository URL
@@ -243,7 +243,7 @@ async def post_status(
     """Update lock status for files. Supports atomic multi-file locking.
 
     Args:
-        username: Stable agent identity for lock attribution; choose once as "model-randomword" (e.g., "gpt5-orchid") and keep using the same value
+        username: Stable agent identity for lock attribution; choose once as "(model)-(random word)-(agent owner github username)" (e.g., "gpt5-orchid-lukauljaj") and keep using the same value
         file_paths: List of file paths (e.g., ["src/auth.ts"])
         status: Lock status - "READING", "WRITING", or "OPEN"
         message: Context message about what you're doing

@@ -348,7 +348,7 @@ curl http://localhost:3000/mcp \
     "params":{
       "name":"check_status",
       "arguments":{
-        "username":"dedalus-judge",
+        "username":"gpt5-orchid-lukauljaj",
         "repo_url":"https://github.com/anthropics/anthropic-sdk-python",
         "branch":"main",
         "file_paths":["README.md"],

@@ -56,6 +56,8 @@ Point your MCP client to `http://localhost:8000/mcp` and invoke:
 - `check_status(username, file_paths, agent_head, repo_url, branch?)`
 - `post_status(username, file_paths, status, message, agent_head, repo_url, branch?, new_repo_head?)`
 
+Use the username schema: `(model)-(random word)-(agent owner github username)` (example: `gpt5-orchid-lukauljaj`).
+
 ## How We Built It
 
 - `src/server.py`: thin MCP server bootstrap (`dedalus_mcp.MCPServer`)
