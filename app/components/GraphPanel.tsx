@@ -17,6 +17,7 @@ import FileNode from './FileNode';
 import DependencyEdge from './DependencyEdge';
 import ControlDock from './ControlDock';
 import NodeDetailsDialog from './NodeDetailsDialog';
+import { computeDagreLayout } from '../utils/dagreLayout';
 
 const nodeTypes = {
     activeFile: FileNode,
@@ -47,25 +48,27 @@ const LAYOUT_X_STEP = 360;
 const LAYOUT_Y_STEP = 210;
 const LAYOUT_SPAWN_JITTER = 24;
 const LAYOUT_TICK_MS = 42;
-const LAYOUT_EDGE_LENGTH = 350; // Increased even more
-const LAYOUT_EDGE_SPRING = 0.008;
-const LAYOUT_REPULSION = 8000; // Significantly reduced repulsion
-const LAYOUT_REPULSION_MIN_DISTANCE = 40; // Reduced personal space
-const LAYOUT_CENTER_GRAVITY = 0.05; // Stronger gravity to pull centers
-const LAYOUT_SAME_FOLDER_TARGET = 100; // Tighter folder clustering
-const LAYOUT_SAME_FOLDER_RANGE = 2000; // Pull from further away
-const LAYOUT_SAME_FOLDER_PULL = 0.008; // Much stronger pull
-const LAYOUT_BROWNIAN_MOTION = 0.08; // Continuous floating movement
-const LAYOUT_MIN_X_GAP = 236;
-const LAYOUT_MIN_Y_GAP = 92;
+const LAYOUT_EDGE_LENGTH = 120; // Reduce edge length to keep hierarchy tighter
+const LAYOUT_EDGE_SPRING = 0.08; // Strong springs to keep structure tight
+const LAYOUT_REPULSION = 12000; // Reduced repulsion to prevent infinite spread
+const LAYOUT_REPULSION_MIN_DISTANCE = 140; // Moderate personal space
+const LAYOUT_CENTER_GRAVITY = 0.001; // Minimal gravity just to keep it loosely on screen
+const LAYOUT_SAME_FOLDER_TARGET = 100;
+const LAYOUT_SAME_FOLDER_RANGE = 2000;
+const LAYOUT_SAME_FOLDER_PULL = 0.008;
+const LAYOUT_BROWNIAN_MOTION = 0.02; // Reduced jitter for stability
+const LAYOUT_MIN_X_GAP = 200; // Adjusted for hierarchy
+const LAYOUT_MIN_Y_GAP = 120; // Adjusted for hierarchy
 const LAYOUT_AXIS_GAP_PUSH = 0.05;
 const LAYOUT_AXIS_GAP_PUSH_MAX = 2.8;
+const LAYOUT_HIERARCHY_STRENGTH = 0.2; // Strength of the Y-axis alignment force
+const LAYOUT_HIERARCHY_LEVEL_HEIGHT = 180; // Vertical distance between levels
 const LAYOUT_FOLDER_GROUP_X_STEP = 520;
 const LAYOUT_FOLDER_GROUP_Y_STEP = 340;
 const LAYOUT_FOLDER_ITEM_X_STEP = 260;
 const LAYOUT_FOLDER_ITEM_Y_STEP = 130;
-const LAYOUT_DAMPING = 0.92; // High friction for "floating" feel (closer to 1 = slippery, lower = thick fluid)
-const LAYOUT_MAX_SPEED = 1.0; // Very slow, drift-like movement
+const LAYOUT_DAMPING = 0.60; // High friction/viscosity to stop movement quickly
+const LAYOUT_MAX_SPEED = 0.4; // Very slow, deliberate movement cap
 const VIEW_TRANSITION_OVERLAY_MS = 1000;
 
 type Point = { x: number; y: number };
@@ -182,152 +185,10 @@ export default function GraphPanel({
 
         const nodeIds = graph.nodes.map((node) => node.id);
         const edges = graph.edges.map((edge) => ({ source: edge.source, target: edge.target }));
-        const folderByNodeId = Object.fromEntries(
-            graph.nodes.map((node) => [node.id, getFolderPath(node.id)]),
-        );
-        const seededPositions = buildFolderClusterPositions(nodeIds);
 
-        const interval = setInterval(() => {
-            setNodePositions((previous) => {
-                if (Object.keys(previous).length === 0) {
-                    return previous;
-                }
-
-                const nextPositions: Record<string, Point> = {};
-                const forces: Record<string, Point> = {};
-                const nextVelocities: Record<string, Point> = { ...velocitiesRef.current };
-
-                for (const nodeId of nodeIds) {
-                    const fallback = seededPositions[nodeId] ?? { x: 0, y: 0 };
-                    nextPositions[nodeId] = previous[nodeId] ?? fallback;
-                    forces[nodeId] = { x: 0, y: 0 };
-
-                    // Brownian motion / Floating effect
-                    forces[nodeId].x += (Math.random() - 0.5) * LAYOUT_BROWNIAN_MOTION;
-                    forces[nodeId].y += (Math.random() - 0.5) * LAYOUT_BROWNIAN_MOTION;
-                }
-
-                for (let i = 0; i < nodeIds.length; i += 1) {
-                    const sourceId = nodeIds[i];
-                    for (let j = i + 1; j < nodeIds.length; j += 1) {
-                        const targetId = nodeIds[j];
-                        const source = nextPositions[sourceId];
-                        const target = nextPositions[targetId];
-                        const deltaX = target.x - source.x;
-                        const deltaY = target.y - source.y;
-                        const distance = Math.max(
-                            Math.hypot(deltaX, deltaY),
-                            LAYOUT_REPULSION_MIN_DISTANCE,
-                        );
-                        const directionX = deltaX / distance;
-                        const directionY = deltaY / distance;
-                        const magnitude = LAYOUT_REPULSION / (distance * distance);
-
-                        forces[sourceId].x -= directionX * magnitude;
-                        forces[sourceId].y -= directionY * magnitude;
-                        forces[targetId].x += directionX * magnitude;
-                        forces[targetId].y += directionY * magnitude;
-
-                        if (folderByNodeId[sourceId] === folderByNodeId[targetId]) {
-                            const separation = distance - LAYOUT_SAME_FOLDER_TARGET;
-                            // Pull them together if they drift too far, or push if too close
-                            if (Math.abs(separation) > 5) {
-                                const folderPull = separation * LAYOUT_SAME_FOLDER_PULL;
-                                forces[sourceId].x += directionX * folderPull;
-                                forces[sourceId].y += directionY * folderPull;
-                                forces[targetId].x -= directionX * folderPull;
-                                forces[targetId].y -= directionY * folderPull;
-                            }
-                        }
-
-                        const absDeltaX = Math.abs(deltaX);
-                        if (absDeltaX < LAYOUT_MIN_X_GAP) {
-                            const pushX = Math.min(
-                                (LAYOUT_MIN_X_GAP - absDeltaX) * LAYOUT_AXIS_GAP_PUSH,
-                                LAYOUT_AXIS_GAP_PUSH_MAX,
-                            );
-                            const separationDirectionX = absDeltaX < 0.001
-                                ? getAxisSeparationDirection(sourceId, targetId, 'x')
-                                : deltaX / absDeltaX;
-                            forces[sourceId].x -= separationDirectionX * pushX;
-                            forces[targetId].x += separationDirectionX * pushX;
-                        }
-
-                        const absDeltaY = Math.abs(deltaY);
-                        if (absDeltaY < LAYOUT_MIN_Y_GAP) {
-                            const pushY = Math.min(
-                                (LAYOUT_MIN_Y_GAP - absDeltaY) * LAYOUT_AXIS_GAP_PUSH,
-                                LAYOUT_AXIS_GAP_PUSH_MAX,
-                            );
-                            const separationDirectionY = absDeltaY < 0.001
-                                ? getAxisSeparationDirection(sourceId, targetId, 'y')
-                                : deltaY / absDeltaY;
-                            forces[sourceId].y -= separationDirectionY * pushY;
-                            forces[targetId].y += separationDirectionY * pushY;
-                        }
-                    }
-                }
-
-                for (const edge of edges) {
-                    const source = nextPositions[edge.source];
-                    const target = nextPositions[edge.target];
-                    if (!source || !target) {
-                        continue;
-                    }
-
-                    const deltaX = target.x - source.x;
-                    const deltaY = target.y - source.y;
-                    const distance = Math.max(Math.hypot(deltaX, deltaY), 1);
-                    const directionX = deltaX / distance;
-                    const directionY = deltaY / distance;
-                    const spring = (distance - LAYOUT_EDGE_LENGTH) * LAYOUT_EDGE_SPRING;
-
-                    forces[edge.source].x += directionX * spring;
-                    forces[edge.source].y += directionY * spring;
-                    forces[edge.target].x -= directionX * spring;
-                    forces[edge.target].y -= directionY * spring;
-                }
-
-                let centroidX = 0;
-                let centroidY = 0;
-                for (const nodeId of nodeIds) {
-                    centroidX += nextPositions[nodeId].x;
-                    centroidY += nextPositions[nodeId].y;
-                }
-                centroidX /= nodeIds.length;
-                centroidY /= nodeIds.length;
-
-                for (const nodeId of nodeIds) {
-                    const position = nextPositions[nodeId];
-                    forces[nodeId].x += (centroidX - position.x) * LAYOUT_CENTER_GRAVITY;
-                    forces[nodeId].y += (centroidY - position.y) * LAYOUT_CENTER_GRAVITY;
-                }
-
-                for (const nodeId of nodeIds) {
-                    const velocity = nextVelocities[nodeId] ?? { x: 0, y: 0 };
-                    velocity.x = (velocity.x + forces[nodeId].x) * LAYOUT_DAMPING;
-                    velocity.y = (velocity.y + forces[nodeId].y) * LAYOUT_DAMPING;
-
-                    const speed = Math.hypot(velocity.x, velocity.y);
-                    if (speed > LAYOUT_MAX_SPEED) {
-                        const scale = LAYOUT_MAX_SPEED / speed;
-                        velocity.x *= scale;
-                        velocity.y *= scale;
-                    }
-
-                    nextVelocities[nodeId] = velocity;
-                    nextPositions[nodeId] = {
-                        x: nextPositions[nodeId].x + velocity.x,
-                        y: nextPositions[nodeId].y + velocity.y,
-                    };
-                }
-
-                velocitiesRef.current = nextVelocities;
-                return nextPositions;
-            });
-        }, LAYOUT_TICK_MS);
-
-        return () => clearInterval(interval);
+        // Compute layout using Dagre (deterministic, hierarchical)
+        const positions = computeDagreLayout(nodeIds, edges);
+        setNodePositions(positions);
     }, [graph, structureSignature]);
 
     useEffect(() => {
@@ -441,18 +302,34 @@ export default function GraphPanel({
             const targetLock = graph.locks[edge.target];
             const isLockedEdge = !!sourceLock || !!targetLock;
 
-            // High contrast colors (Black/White)
-            const baseStroke = isDark ? '#ffffff' : '#000000';
-            const activeStroke = isDark ? '#ffffff' : '#000000';
+            // Colors for backend-driven states
+            const colorNew = '#10b981'; // Emerald-500
+            const colorLocked = '#f59e0b'; // Amber-500
+            const colorBase = isDark ? '#52525b' : '#a1a1aa'; // Zinc-600 / Zinc-400
 
-            const stroke = isNew || isLockedEdge ? activeStroke : baseStroke;
+            let stroke = colorBase;
+            let strokeWidth = 1.1;
+            let opacity = 0.6;
+            let animated = false;
+
+            if (isNew) {
+                stroke = colorNew;
+                strokeWidth = 2.5;
+                opacity = 1;
+                animated = true;
+            } else if (isLockedEdge) {
+                stroke = colorLocked;
+                strokeWidth = 2;
+                opacity = 0.9;
+                animated = true;
+            }
 
             return {
                 id: edgeId,
                 source: edge.source,
                 target: edge.target,
                 type: 'dependency',
-                animated: isNew || isLockedEdge,
+                animated,
                 markerEnd: {
                     type: MarkerType.ArrowClosed,
                     color: stroke,
@@ -461,8 +338,8 @@ export default function GraphPanel({
                 },
                 style: {
                     stroke,
-                    strokeWidth: isNew ? 2 : 1.1,
-                    opacity: isNew ? 1 : 0.7,
+                    strokeWidth,
+                    opacity,
                 },
                 data: {
                     isNew,
@@ -522,7 +399,7 @@ export default function GraphPanel({
                 >
                     <Background color={isDark ? '#3f3f46' : '#a1a1aa'} variant={BackgroundVariant.Dots} gap={24} size={1.2} />
                     <Controls
-                        position="bottom-right"
+                        position="top-right"
                         className={isDark
                             ? '!bg-zinc-900/85 !text-zinc-200 !shadow-lg !border !border-zinc-700 !rounded-xl z-[1000]'
                             : '!bg-white/65 !shadow-lg !border !border-zinc-200 !rounded-xl z-[1000]'}
@@ -729,4 +606,59 @@ function normalizeRepoUrl(input: string): string {
         return `https://${trimmed}`;
     }
     return trimmed;
+}
+
+function calculateNodeLevels(nodeIds: string[], edges: { source: string; target: string }[]): Record<string, number> {
+    const adj = new Map<string, string[]>();
+    const inDegree = new Map<string, number>();
+
+    nodeIds.forEach(id => {
+        adj.set(id, []);
+        inDegree.set(id, 0);
+    });
+
+    edges.forEach(edge => {
+        if (adj.has(edge.source) && adj.has(edge.target)) {
+            adj.get(edge.source)?.push(edge.target);
+            inDegree.set(edge.target, (inDegree.get(edge.target) || 0) + 1);
+        }
+    });
+
+    const levels: Record<string, number> = {};
+    const queue: string[] = [];
+
+    // Initialize roots (nodes with 0 in-degree)
+    nodeIds.forEach(id => {
+        if ((inDegree.get(id) || 0) === 0) {
+            levels[id] = 0;
+            queue.push(id);
+        }
+    });
+
+    // BFS to assign levels
+    while (queue.length > 0) {
+        const u = queue.shift()!;
+        const neighbors = adj.get(u) || [];
+
+        for (const v of neighbors) {
+            // Assign level based on max parent level + 1
+            const newLevel = (levels[u] || 0) + 1;
+            if (newLevel > (levels[v] || -1)) {
+                levels[v] = newLevel;
+                // Add to queue if we haven't processed it fully or if we found a deeper path
+                if (!queue.includes(v)) { // Simple check to avoid duplicates in queue, though imperfect for DAGs it's okay for visual layout
+                    queue.push(v);
+                }
+            }
+        }
+    }
+
+    // Fallback for cycles or disconnected components: default to level 0 if not assigned
+    nodeIds.forEach(id => {
+        if (levels[id] === undefined) {
+            levels[id] = 0;
+        }
+    });
+
+    return levels;
 }

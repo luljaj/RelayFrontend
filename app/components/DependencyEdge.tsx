@@ -1,5 +1,6 @@
-import React, { memo } from 'react';
-import { BaseEdge, EdgeProps, getBezierPath } from 'reactflow';
+import React, { memo, useCallback } from 'react';
+import { BaseEdge, EdgeProps, getBezierPath, useStore } from 'reactflow';
+import { getEdgeParams } from '../utils/graphUtils';
 
 const DependencyEdge = ({
     sourceX,
@@ -11,14 +12,25 @@ const DependencyEdge = ({
     style = {},
     markerEnd,
     data,
+    source,
+    target,
 }: EdgeProps) => {
+    const sourceNode = useStore(useCallback((store) => store.nodeInternals.get(source), [source]));
+    const targetNode = useStore(useCallback((store) => store.nodeInternals.get(target), [target]));
+
+    if (!sourceNode || !targetNode) {
+        return null;
+    }
+
+    const { sx, sy, tx, ty, sourcePos, targetPos } = getEdgeParams(sourceNode, targetNode);
+
     const [edgePath] = getBezierPath({
-        sourceX,
-        sourceY,
-        sourcePosition,
-        targetX,
-        targetY,
-        targetPosition,
+        sourceX: sx,
+        sourceY: sy,
+        sourcePosition: sourcePos,
+        targetX: tx,
+        targetY: ty,
+        targetPosition: targetPos,
     });
 
     const isNew = data?.isNew;
