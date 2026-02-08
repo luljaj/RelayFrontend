@@ -1,46 +1,55 @@
 # Relay (DevFest 2026)
 
-Relay is a Next.js + Vercel KV coordination backend with a dependency-graph UI and MCP protocol support for agent workflows.
+Relay helps multi-agent teams stop stepping on each other while shipping code fast.
+Instead of discovering merge pain at PR time, Relay surfaces conflicts early with lock-aware orchestration and a live dependency graph.
 
-## What’s implemented
+## Demo First
 
-- Graph API with lock overlay (`GET /api/graph`)
-- Coordination APIs:
-  - `POST /api/check_status`
-  - `POST /api/post_status`
-- Neighbor-aware conflict signaling and orchestration commands
-- Lock cleanup cron endpoint (`GET /api/cleanup_stale_locks`)
-- Frontend graph viewer with force-style node motion
-- GitHub OAuth for UI repo selection (`next-auth`)
-- Native MCP endpoint at `/mcp` with `check_status` and `post_status` tools
-- Optional standalone Python MCP server in `mcp/` (proxy mode)
+### Demo GIF / Video (add this before judging)
 
-## Tech stack
+- Replace this section with a 45-90s walkthrough:
+  - Agent A claims `WRITING` lock
+  - Agent B gets `SWITCH_TASK` on conflicting file
+  - Agent B pivots to neighbor-safe work
+  - Graph view updates with lock/activity context
 
-- Next.js 14, React 18, TypeScript
-- Vercel KV (Upstash Redis)
-- GitHub API via Octokit
-- NextAuth (GitHub provider)
-- MCP protocol (Streamable HTTP style)
+### Screenshots To Add
 
-## Project layout
+- Home graph view with active lock badges
+- Activity timeline showing lock transitions
+- MCP tool call output (`check_status` and `post_status`)
 
-- `app/` Next.js app + API routes
-- `lib/` graph/lock/github services
-- `mcp/` optional Python MCP server
-- `tests/` Vitest tests for app routes/libs
+### Architecture Diagram (recommended)
 
-## Local setup
+- Add `docs/architecture.png` with:
+  - Next.js UI and API routes
+  - Vercel KV lock store
+  - GitHub API dependency ingestion
+  - Native `/mcp` endpoint + optional Python MCP proxy
 
-### 1. Install app dependencies
+## What It Does
+
+- Builds a dependency graph from repository imports
+- Lets agents claim/release `READING` and `WRITING` file locks
+- Detects direct and neighbor conflicts before edits begin
+- Returns actionable orchestration commands (`PULL`, `SWITCH_TASK`, `PROCEED`, `PUSH`)
+- Exposes the same coordination flow through MCP tools
+
+## Why It Matters
+
+Hackathon teams lose time on invisible collisions: stale branches, duplicated work, and late merge conflicts.
+Relay turns coordination into an API contract that agents and humans can both follow.
+
+## Try It Out (Copy/Paste)
+
+### 1. Install and configure
 
 ```bash
 npm install
+cp .env.example .env.local 2>/dev/null || true
 ```
 
-### 2. Configure environment
-
-Create `.env` (or `.env.local`) in project root:
+Set these in `.env.local`:
 
 ```bash
 KV_REST_API_URL=...
@@ -50,12 +59,10 @@ GITHUB_CLIENT_ID=...
 GITHUB_CLIENT_SECRET=...
 NEXTAUTH_SECRET=...
 NEXTAUTH_URL=http://localhost:3000
-
-# Optional, used when no user token is available for some graph calls
 GITHUB_TOKEN=...
 ```
 
-### 3. Run app
+### 2. Start the app
 
 ```bash
 npm run dev
@@ -63,142 +70,83 @@ npm run dev
 
 Open `http://localhost:3000`.
 
-## Useful scripts
+### 3. Validate core flow quickly
+
+```bash
+REPO_URL="https://github.com/<owner>/<repo>"
+BRANCH="main"
+HEAD="$(git rev-parse HEAD)"
+
+curl -s -X POST http://localhost:3000/api/check_status \
+  -H "Content-Type: application/json" \
+  -H "x-github-user: demo-agent" \
+  -d "{\"repo_url\":\"$REPO_URL\",\"branch\":\"$BRANCH\",\"file_paths\":[\"README.md\"],\"agent_head\":\"$HEAD\"}" | jq
+
+curl -s -X POST http://localhost:3000/api/post_status \
+  -H "Content-Type: application/json" \
+  -H "x-github-user: demo-agent" \
+  -d "{\"repo_url\":\"$REPO_URL\",\"branch\":\"$BRANCH\",\"file_paths\":[\"README.md\"],\"status\":\"WRITING\",\"message\":\"updating docs\",\"agent_head\":\"$HEAD\"}" | jq
+
+curl -s "http://localhost:3000/api/graph?repo_url=$REPO_URL&branch=$BRANCH" | jq '.metadata,.locks'
+```
+
+### 4. Validate MCP endpoint
+
+```bash
+curl -s http://localhost:3000/mcp \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' | jq
+```
+
+## How We Built It
+
+- `app/api/check_status`: stale-branch detection + lock-aware orchestration
+- `app/api/post_status`: atomic lock writes/releases and lifecycle updates
+- `lib/locks.ts`: Lua-backed multi-file lock transactions in Vercel KV
+- `lib/graph-service.ts`: dependency graph generation with GitHub API + cache/rate-limit handling
+- `app/mcp/route.ts`: native MCP JSON-RPC endpoint (tool list + tool call)
+- `mcp/src/tools.py`: optional Python MCP proxy with offline and rate-limit fallbacks
+
+## APIs and Frameworks Used
+
+- Next.js 14 + React 18 + TypeScript
+- Vercel KV (Upstash Redis)
+- GitHub API via Octokit
+- NextAuth (GitHub OAuth)
+- MCP protocol (streamable HTTP style)
+
+## Challenges We Hit
+
+- Keeping lock updates atomic across multiple files without race conditions
+- Handling GitHub API quota/rate-limit windows gracefully
+- Distinguishing direct conflicts from dependency-neighbor conflicts
+- Keeping UI polling responsive without turning into API spam
+
+## Project Structure
+
+- `app/` UI, MCP endpoint, and API routes
+- `lib/` lock, graph, GitHub, parser, and validation services
+- `mcp/` standalone Python MCP server (optional deployment mode)
+- `tests/` route and service tests (Vitest)
+
+## Team Roles (fill in)
+
+- `Name A`: coordination backend + lock orchestration
+- `Name B`: graph UI + interaction design
+- `Name C`: MCP integration + agent workflow testing
+
+## What’s Next
+
+- Multi-repo awareness and cross-repo conflict hints
+- Smarter file recommendation when `SWITCH_TASK` is returned
+- Historical analytics for lock hot-spots and merge-risk trends
+- More MCP tools (batch planning, auto-retry policies, branch health)
+
+## Scripts
 
 - `npm run dev`
 - `npm run build`
 - `npm run start`
 - `npm run typecheck`
 - `npm run test`
-
-## API quick checks
-
-```bash
-curl -X POST http://localhost:3000/api/check_status -H "Content-Type: application/json" -d '{}'
-curl -X POST http://localhost:3000/api/post_status -H "Content-Type: application/json" -d '{}'
-curl "http://localhost:3000/api/graph"
-curl -i http://localhost:3000/api/cleanup_stale_locks
-```
-
-## Native MCP endpoint (recommended)
-
-This app now exposes MCP protocol directly at:
-
-- Local: `http://localhost:3000/mcp`
-- Deployed: `https://your-app.vercel.app/mcp`
-
-Your MCP client should connect to that URL directly.
-
-### Quick MCP check
-
-```bash
-curl -s http://localhost:3000/mcp \
-  -H "Content-Type: application/json" \
-  -H "Accept: application/json, text/event-stream" \
-  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
-```
-
-### Tool call check
-
-```bash
-HEAD=$(git rev-parse HEAD)
-BRANCH=$(git rev-parse --abbrev-ref HEAD)
-
-curl -s http://localhost:3000/mcp \
-  -H "Content-Type: application/json" \
-  -H "Accept: application/json, text/event-stream" \
-  -d '{
-    "jsonrpc":"2.0",
-    "id":2,
-    "method":"tools/call",
-    "params":{
-      "name":"check_status",
-      "arguments":{
-        "username":"luka",
-        "file_paths":["README.md"],
-        "agent_head":"'"$HEAD"'",
-        "repo_url":"https://github.com/<owner>/<repo>",
-        "branch":"'"$BRANCH"'"
-      }
-    }
-  }'
-```
-
-## Connect and deploy to Vercel
-
-### 1. Connect local repo to your Vercel project
-
-```bash
-npm i -g vercel
-vercel login
-vercel link
-```
-
-`vercel link` connects this folder to a Vercel project.
-
-### 2. Add Vercel KV to the project
-
-- In Vercel Dashboard: `Storage` -> `Create Database` -> `KV` (Upstash)
-- Attach it to the same project/environment(s)
-- Vercel will provide/inject:
-  - `KV_REST_API_URL`
-  - `KV_REST_API_TOKEN`
-
-### 3. Set required Vercel environment variables
-
-In `Project Settings -> Environment Variables`, set:
-
-- `CRON_SECRET`
-- `GITHUB_CLIENT_ID`
-- `GITHUB_CLIENT_SECRET`
-- `NEXTAUTH_SECRET`
-- `NEXTAUTH_URL` = your production URL, e.g. `https://your-app.vercel.app`
-- `GITHUB_TOKEN` (optional fallback)
-
-### 4. Configure GitHub OAuth app callback
-
-In your GitHub OAuth App settings:
-
-- Homepage URL: `https://your-app.vercel.app`
-- Authorization callback URL: `https://your-app.vercel.app/api/auth/callback/github`
-
-### 5. Deploy
-
-```bash
-vercel --prod
-```
-
-The cron in `vercel.json` is configured to call `/api/cleanup_stale_locks` daily at `03:00` UTC.
-
-## Standalone Python MCP server (optional)
-
-Use this only if you explicitly want a separate MCP process.
-
-### Run locally
-
-```bash
-uv run --project mcp python mcp/main.py
-```
-
-Server endpoint: `http://0.0.0.0:8000/mcp`
-
-### Point MCP to your deployed Vercel app
-
-Set before starting MCP:
-
-```bash
-export VERCEL_API_URL="https://your-app.vercel.app"
-```
-
-MCP tools forward calls to:
-
-- `POST /api/check_status`
-- `POST /api/post_status`
-
-## Testing
-
-```bash
-npm run typecheck
-npm test
-uv run --project mcp --with pytest pytest mcp/tests/test_models.py
-```
