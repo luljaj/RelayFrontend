@@ -31,6 +31,7 @@ vi.mock('@/lib/graph-service', () => ({
 vi.mock('@/lib/activity', () => ({
   publishActivityEvents: vi.fn(async () => undefined),
   getRecentActivityEvents: vi.fn(async () => []),
+  clearActivityEvents: vi.fn(async () => ({ success: true, cleared: 0 })),
 }));
 
 import { GET as graphGet } from '@/app/api/graph/route';
@@ -39,12 +40,14 @@ import { POST as checkStatusPost } from '@/app/api/check_status/route';
 import { GET as cleanupGet } from '@/app/api/cleanup_stale_locks/route';
 import { POST as postStatusPost } from '@/app/api/post_status/route';
 import { POST as releaseAllLocksPost } from '@/app/api/release_all_locks/route';
-import { getRecentActivityEvents, publishActivityEvents } from '@/lib/activity';
+import { POST as clearAgentAndFeedPost } from '@/app/api/clear_agent_and_feed/route';
+import { clearActivityEvents, getRecentActivityEvents, publishActivityEvents } from '@/lib/activity';
 import { getRepoHeadCached } from '@/lib/github';
 import { acquireLocks, getLocks, releaseAllLocks, releaseLocks } from '@/lib/locks';
 
 const mockedPublishActivityEvents = vi.mocked(publishActivityEvents);
 const mockedGetRecentActivityEvents = vi.mocked(getRecentActivityEvents);
+const mockedClearActivityEvents = vi.mocked(clearActivityEvents);
 const mockedGetRepoHead = vi.mocked(getRepoHeadCached);
 const mockedGetLocks = vi.mocked(getLocks);
 const mockedAcquireLocks = vi.mocked(acquireLocks);
@@ -60,6 +63,7 @@ describe('route smoke checks', () => {
     mockedReleaseAllLocks.mockClear();
     mockedPublishActivityEvents.mockClear();
     mockedGetRecentActivityEvents.mockClear();
+    mockedClearActivityEvents.mockClear();
     getCachedGraphMock.mockClear();
 
     mockedGetRepoHead.mockResolvedValue('remote-head');
@@ -68,6 +72,7 @@ describe('route smoke checks', () => {
     mockedReleaseLocks.mockResolvedValue({ success: true });
     mockedReleaseAllLocks.mockResolvedValue({ success: true, released: 0 });
     mockedGetRecentActivityEvents.mockResolvedValue([]);
+    mockedClearActivityEvents.mockResolvedValue({ success: true, cleared: 0 });
     getCachedGraphMock.mockResolvedValue(null);
   });
 
@@ -603,5 +608,63 @@ describe('route smoke checks', () => {
 
     expect(response.status).toBe(500);
     expect(payload).toEqual({ error: 'Failed to release all locks' });
+  });
+
+  test('clear_agent_and_feed route returns 400 on missing fields', async () => {
+    const request = { json: async () => ({}) } as any;
+    const response = await clearAgentAndFeedPost(request);
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({ error: 'Missing required fields' });
+  });
+
+  test('clear_agent_and_feed route clears locks and activity feed', async () => {
+    mockedReleaseAllLocks.mockResolvedValueOnce({ success: true, released: 2 });
+    mockedClearActivityEvents.mockResolvedValueOnce({ success: true, cleared: 5 });
+
+    const request = {
+      json: async () => ({
+        repo_url: 'https://github.com/a/b',
+        branch: 'main',
+      }),
+    } as any;
+
+    const response = await clearAgentAndFeedPost(request);
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(mockedReleaseAllLocks).toHaveBeenCalledWith('https://github.com/a/b', 'main');
+    expect(mockedClearActivityEvents).toHaveBeenCalledWith('https://github.com/a/b', 'main');
+    expect(payload).toEqual({
+      success: true,
+      released: 2,
+      cleared: 5,
+      repo_url: 'https://github.com/a/b',
+      branch: 'main',
+    });
+  });
+
+  test('clear_agent_and_feed route returns 500 when clear operation fails', async () => {
+    mockedReleaseAllLocks.mockResolvedValueOnce({ success: true, released: 2 });
+    mockedClearActivityEvents.mockResolvedValueOnce({ success: false, cleared: 0 });
+
+    const request = {
+      json: async () => ({
+        repo_url: 'https://github.com/a/b',
+        branch: 'main',
+      }),
+    } as any;
+
+    const response = await clearAgentAndFeedPost(request);
+    const payload = await response.json();
+
+    expect(response.status).toBe(500);
+    expect(payload).toEqual({
+      error: 'Failed to clear agent tab and live feed',
+      details: {
+        locks_cleared: true,
+        feed_cleared: false,
+      },
+    });
   });
 });

@@ -14,6 +14,8 @@ interface AdminPanelProps {
     syncInProgress: boolean;
     onReleaseAllLocks: () => Promise<{ success: boolean; released: number; error?: string }>;
     releaseAllLocksInProgress: boolean;
+    onClearAgentAndFeed: () => Promise<{ success: boolean; released: number; cleared: number; error?: string }>;
+    clearAgentAndFeedInProgress: boolean;
     onImportGraphJson: (json: string) => string | null;
     onExportGraph: () => void;
     onClearImportedGraph: () => void;
@@ -32,6 +34,8 @@ export default function AdminPanel({
     syncInProgress,
     onReleaseAllLocks,
     releaseAllLocksInProgress,
+    onClearAgentAndFeed,
+    clearAgentAndFeedInProgress,
     onImportGraphJson,
     onExportGraph,
     onClearImportedGraph,
@@ -41,6 +45,7 @@ export default function AdminPanel({
     const [jsonDraft, setJsonDraft] = useState('');
     const [importFeedback, setImportFeedback] = useState<string | null>(null);
     const [lockFeedback, setLockFeedback] = useState<string | null>(null);
+    const [clearFeedFeedback, setClearFeedFeedback] = useState<string | null>(null);
     const fileInputRef = useRef<HTMLInputElement | null>(null);
 
     if (!open) {
@@ -109,6 +114,24 @@ export default function AdminPanel({
         setLockFeedback(`Released ${count} lock${count === 1 ? '' : 's'}.`);
     };
 
+    const onClearAgentAndFeedClick = async () => {
+        setClearFeedFeedback(null);
+        const result = await onClearAgentAndFeed();
+        if (!result.success) {
+            setClearFeedFeedback(result.error ?? 'Failed to clear agent tab and live feed.');
+            return;
+        }
+
+        if (result.released === 0 && result.cleared === 0) {
+            setClearFeedFeedback('No agents or feed entries to clear.');
+            return;
+        }
+
+        setClearFeedFeedback(
+            `Cleared ${result.released} lock${result.released === 1 ? '' : 's'} and ${result.cleared} feed item${result.cleared === 1 ? '' : 's'}.`,
+        );
+    };
+
     return (
         <div className="absolute right-4 top-14 z-[90] w-[min(96vw,430px)]">
             <div className={`overflow-hidden border rounded-2xl shadow-2xl ${isDark ? 'border-zinc-700 bg-black text-zinc-100' : 'border-zinc-200 bg-white text-zinc-900'}`}>
@@ -170,6 +193,21 @@ export default function AdminPanel({
                         {lockFeedback && (
                             <p className={`mt-2 rounded-lg border px-2.5 py-1.5 text-[11px] ${isDark ? 'border-zinc-700 bg-zinc-900 text-zinc-300' : 'border-zinc-200 bg-zinc-50 text-zinc-600'}`}>
                                 {lockFeedback}
+                            </p>
+                        )}
+
+                        <button
+                            onClick={onClearAgentAndFeedClick}
+                            disabled={clearAgentAndFeedInProgress || isUsingImportedGraph}
+                            className={`mt-2 inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${isDark ? 'border-amber-500/60 bg-amber-500/10 text-amber-200 hover:bg-amber-500/20' : 'border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100'}`}
+                            title={isUsingImportedGraph ? 'Switch to live graph mode to clear live state.' : 'Clear active agents and live feed for this repo/branch.'}
+                        >
+                            {clearAgentAndFeedInProgress ? 'Clearing…' : 'Clear Agent Tab + Live Feed'}
+                        </button>
+
+                        {clearFeedFeedback && (
+                            <p className={`mt-2 rounded-lg border px-2.5 py-1.5 text-[11px] ${isDark ? 'border-zinc-700 bg-zinc-900 text-zinc-300' : 'border-zinc-200 bg-zinc-50 text-zinc-600'}`}>
+                                {clearFeedFeedback}
                             </p>
                         )}
 

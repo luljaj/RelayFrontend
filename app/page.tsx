@@ -22,6 +22,7 @@ export default function HomePage() {
   const [sidebarWidth, setSidebarWidth] = useState(350);
   const [isResizing, setIsResizing] = useState(false);
   const [releaseAllLocksInProgress, setReleaseAllLocksInProgress] = useState(false);
+  const [clearAgentAndFeedInProgress, setClearAgentAndFeedInProgress] = useState(false);
   const sidebarRef = useRef<HTMLDivElement>(null);
   const pressedKeysRef = useRef<Set<string>>(new Set());
   const comboUsedRef = useRef(false);
@@ -229,6 +230,68 @@ export default function HomePage() {
     }
   };
 
+  const onClearAgentAndFeed = async (): Promise<{
+    success: boolean;
+    released: number;
+    cleared: number;
+    error?: string;
+  }> => {
+    if (clearAgentAndFeedInProgress) {
+      return { success: false, released: 0, cleared: 0, error: 'Clear already in progress.' };
+    }
+
+    setClearAgentAndFeedInProgress(true);
+    try {
+      const response = await fetch('/api/clear_agent_and_feed', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          repo_url: repoUrl,
+          branch: branch.trim() || 'main',
+        }),
+      });
+
+      const payload = (await response.json().catch(() => null)) as
+        | { success?: boolean; released?: number; cleared?: number; error?: string; details?: string }
+        | null;
+
+      if (!response.ok || !payload?.success) {
+        const message = payload?.error ?? `Failed to clear agent tab and live feed (${response.status})`;
+        const details =
+          typeof payload?.details === 'string'
+            ? `: ${payload.details}`
+            : payload?.details
+              ? `: ${JSON.stringify(payload.details)}`
+              : '';
+        return {
+          success: false,
+          released: 0,
+          cleared: 0,
+          error: `${message}${details}`,
+        };
+      }
+
+      await fetchGraph();
+      return {
+        success: true,
+        released: typeof payload.released === 'number' ? payload.released : 0,
+        cleared: typeof payload.cleared === 'number' ? payload.cleared : 0,
+      };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      return {
+        success: false,
+        released: 0,
+        cleared: 0,
+        error: `Failed to clear agent tab and live feed: ${message}`,
+      };
+    } finally {
+      setClearAgentAndFeedInProgress(false);
+    }
+  };
+
   return (
     <main className={`relative flex h-screen w-screen overflow-hidden pt-12 ${isDark ? 'bg-black text-zinc-100' : 'bg-zinc-50 text-zinc-900'}`}>
       {error && (
@@ -264,6 +327,8 @@ export default function HomePage() {
           syncInProgress={loading || refreshing}
           onReleaseAllLocks={onReleaseAllLocks}
           releaseAllLocksInProgress={releaseAllLocksInProgress}
+          onClearAgentAndFeed={onClearAgentAndFeed}
+          clearAgentAndFeedInProgress={clearAgentAndFeedInProgress}
           onImportGraphJson={onImportGraphJson}
           onExportGraph={onExportGraph}
           onClearImportedGraph={clearImportedGraph}

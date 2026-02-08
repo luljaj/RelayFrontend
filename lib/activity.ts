@@ -125,3 +125,29 @@ export async function getRecentActivityEvents(
   parsed.reverse();
   return parsed;
 }
+
+export async function clearActivityEvents(
+  repoUrl: string,
+  branch: string,
+): Promise<{ success: boolean; cleared: number }> {
+  const key = getActivityKey(repoUrl, branch);
+  const listClient = kv as unknown as {
+    llen?: (key: string) => Promise<unknown>;
+  };
+
+  try {
+    let cleared = 0;
+    if (listClient.llen) {
+      const rawLength = await listClient.llen(key);
+      if (typeof rawLength === 'number' && Number.isFinite(rawLength)) {
+        cleared = rawLength;
+      }
+    }
+
+    await kv.del(key);
+    return { success: true, cleared };
+  } catch (error) {
+    console.error('Clear activity events failed:', error);
+    return { success: false, cleared: 0 };
+  }
+}
