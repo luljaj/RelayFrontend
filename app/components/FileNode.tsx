@@ -43,8 +43,21 @@ const FileNode = ({ data }: FileNodeProps) => {
 
     return (
         <div className="relative group">
+            <style jsx>{`
+                @keyframes gentle-pulse {
+                    0%, 100% {
+                        transform: scale(1);
+                    }
+                    50% {
+                        transform: scale(1.05);
+                    }
+                }
+                .pulse-animation {
+                    animation: gentle-pulse 2s ease-in-out infinite;
+                }
+            `}</style>
             <div
-                className={`relative min-w-[210px] overflow-hidden rounded-2xl px-4 py-3 transition-all duration-200 ${isDark ? 'text-zinc-100' : 'text-zinc-900'}`}
+                className={`relative min-w-[210px] overflow-hidden rounded-2xl px-4 py-3 transition-all duration-200 ${isDark ? 'text-zinc-100' : 'text-zinc-900'} ${isTaken ? 'pulse-animation' : ''}`}
                 style={{
                     borderColor,
                     borderStyle,
