@@ -1,4 +1,5 @@
 'use client';
+// Live demo: Team presence feature in development - Relay MCP active
 
 import { useEffect, useRef, useState } from 'react';
 import { PanelRightOpen, X } from 'lucide-react';
